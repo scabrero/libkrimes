@@ -121,7 +121,7 @@ mod tests {
     use crate::asn1::kerberos_string::KerberosString;
     use crate::asn1::principal_name::PrincipalName;
     use crate::asn1::realm::Realm;
-    use crate::asn1::tagged_ticket::{TaggedTicket, Ticket};
+    use crate::asn1::tagged_ticket::Ticket;
     use der::asn1::Ia5String;
     use der::asn1::OctetString;
     use std::iter::zip;
@@ -140,7 +140,7 @@ mod tests {
         padata: Option<Vec<TestPaData>>,
         crealm: String,
         cname: PrincipalName,
-        ticket: TaggedTicket,
+        ticket: Ticket,
         encpart: EncryptedData,
     }
 
@@ -192,23 +192,21 @@ mod tests {
                         KerberosString(Ia5String::new("testuser").expect("Failed to build test Ia5String"))
                     ]
                 },
-                ticket: TaggedTicket::new(
-                    Ticket {
-                        tkt_vno: 5,
-                        realm: KerberosString(Ia5String::new("EXAMPLE.COM").expect("Failed to build Ia5String")),
-                        sname: PrincipalName {
+                ticket: Ticket::new(
+                        5,
+                        KerberosString(Ia5String::new("EXAMPLE.COM").expect("Failed to build Ia5String")),
+                        PrincipalName {
                             name_type: 2 as i32,
                             name_string: vec![
                                 KerberosString(Ia5String::new("krbtgt").expect("Failed to build test Ia5String")),
                                 KerberosString(Ia5String::new("EXAMPLE.COM").expect("Failed to build test Ia5String"))
                             ],
                         },
-                        enc_part: EncryptedData {
+                        EncryptedData {
                             etype: 18,
                             kvno: Some(1),
                             cipher: OctetString::new(hex::decode("30820174a003020112a103020101a28201660482016297d16c13bbd7fdd8dac58f284e9eea01c1cc89413195aee01d12ab05c5775f701849e25fd416427693cf8cf6567180cb5c9c1bf157521fdf38316c0ddb0a824b60c98056677ace3bcbccd2c82c203aaad8a0e6df44d07c76be2ddb70349a3c23b7b7bc2211c8bcc879a704872cf46d1d650b55f75e487eafdffbae8dc00e9083e9e0b59aa275a4591a7965d5ffb15f8d96d84a9d0a5840ef5d4715f2e99b3cf3cdc961ce416e4d9e49e7a1a617d9199006d07eb886a70a49c1e8e966f99d6939c0d853636081a1ed0b9fdc4971f447cc5aa503092d91f352d451e349bf58a4320aa116d9a30e944402014aee43f51a457c01ae7f3a6863a8df05569ed969edc97f298bf93be1ed85d64914b293e6dc6ebc8229a6aa040ce7c184cf7082ab3b3b3ff53bc4b47b3512e29479b4ffe8508cfcc1f3e5ec6371039bff5b5c78facc9e00a6d818d4b6ea2be680547abbe8bd79e804814699f51fcdc531bb94613dc9923840").expect("Failed to hex decode")).expect("Failed to build OctetString"),
                         },
-                    }
                 ),
                 encpart: EncryptedData {
                     etype: 18,

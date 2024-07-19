@@ -366,7 +366,7 @@ impl TryFrom<KdcReq> for KerberosRequest {
                 let cname = req.req_body.cname.ok_or(KrbError::MissingClientName)?;
                 let realm = req.req_body.realm;
 
-                let client_name: Name = (cname, realm).try_into().unwrap();
+                let client_name: Name = (&cname, &realm).try_into().unwrap();
 
                 // Is realm from .realm? In the service? Who knows! The krb spec is cooked.
                 let service_name: Name = req

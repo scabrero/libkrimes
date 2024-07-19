@@ -2,7 +2,7 @@ use super::encrypted_data::EncryptedData;
 use super::pa_data::PaData;
 use super::principal_name::PrincipalName;
 use super::realm::Realm;
-use super::tagged_ticket::TaggedTicket;
+use super::tagged_ticket::Ticket;
 use der::Sequence;
 
 /// ```text
@@ -32,7 +32,7 @@ pub(crate) struct KdcRep {
     #[asn1(context_specific = "4")]
     pub(crate) cname: PrincipalName,
     #[asn1(context_specific = "5")]
-    pub(crate) ticket: TaggedTicket,
+    pub(crate) ticket: Ticket,
     #[asn1(context_specific = "6")]
     pub(crate) enc_part: EncryptedData,
 }

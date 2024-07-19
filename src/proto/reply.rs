@@ -5,6 +5,7 @@ use crate::asn1::{
     },
     enc_kdc_rep_part::EncKdcRepPart,
     enc_ticket_part::EncTicketPart,
+    encrypted_data::EncryptedData as Asn1EncryptedData,
     encryption_key::EncryptionKey as KdcEncryptionKey,
     etype_info2::ETypeInfo2Entry as KdcETypeInfo2Entry,
     kdc_rep::KdcRep,
@@ -14,8 +15,12 @@ use crate::asn1::{
     krb_error::MethodData,
     krb_kdc_rep::KrbKdcRep,
     pa_data::PaData,
+    principal_name::PrincipalName,
+    realm::Realm as Asn1Realm,
+    tagged_ticket::Ticket as Asn1Ticket,
+    ticket_flags::TicketFlags,
     transited_encoding::TransitedEncoding,
-    Ia5String, OctetString, ticket_flags::TicketFlags,
+    Ia5String, OctetString,
 };
 use crate::constants::AES_256_KEY_LEN;
 use crate::crypto::{
@@ -23,7 +28,7 @@ use crate::crypto::{
     derive_key_external_salt_aes256_cts_hmac_sha1_96, encrypt_aes256_cts_hmac_sha1_96,
 };
 use crate::error::KrbError;
-use der::{Decode, Encode, flagset::FlagSet};
+use der::{flagset::FlagSet, Decode, Encode};
 use rand::{thread_rng, Rng};
 
 use std::time::{Duration, SystemTime};
@@ -337,19 +342,19 @@ impl KerberosReplyAuthenticationBuilder {
             contents: OctetString::new(b"").unwrap(),
         };
 
-        let ticket_inner = EncTicketPart {
+        let ticket_inner = EncTicketPart::new(
             flags,
-            key: session_key,
+            session_key,
             crealm,
             cname,
             transited,
             auth_time,
-            start_time: Some(start_time),
+            Some(start_time),
             end_time,
             renew_till,
-            client_addresses: None,
-            authorization_data: None,
-        };
+            None,
+            None,
+        );
 
         let data = ticket_inner
             .to_der()
@@ -363,7 +368,7 @@ impl KerberosReplyAuthenticationBuilder {
         };
 
         let ticket = Ticket {
-            tkt_vno: 0,
+            tkt_vno: 5,
             service: self.server,
             enc_part: ticket_enc_part,
         };
@@ -416,7 +421,7 @@ impl TryFrom<KdcKrbError> for KerberosReply {
             return Err(KrbError::InvalidPvno);
         }
 
-        let service = Name::try_from((rep.service_name, rep.service_realm))?;
+        let service = Name::try_from((&rep.service_name, &rep.service_realm))?;
 
         let msg_type =
             KrbMessageType::try_from(rep.msg_type).map_err(|_| KrbError::InvalidMessageType)?;
@@ -477,9 +482,69 @@ impl TryInto<KrbKdcRep> for KerberosReply {
                 pa_data,
                 ticket,
             }) => {
-                // let asn_as_req = as_req.to_asn()?;
-                // KrbKdcReq::to_der(&KrbKdcReq::AsReq(asn_as_req))
-                todo!();
+                //let asn_as_req = as_req.to_asn()?;
+                //KrbKdcReq::to_der(&KrbKdcReq::AsReq(asn_as_req))
+
+                let pa_data: Option<Vec<PaData>> = match pa_data {
+                    Some(data) => {
+                        let etype_padata_vec: Vec<_> = data
+                            .etype_info2
+                            .iter()
+                            .map(|einfo| {
+                                let etype = einfo.etype as i32;
+                                let salt = einfo
+                                    .salt
+                                    .as_ref()
+                                    .map(|data| KerberosString(Ia5String::new(data).unwrap()));
+                                let s2kparams = einfo
+                                    .s2kparams
+                                    .as_ref()
+                                    .map(|data| OctetString::new(data.to_owned()).unwrap());
+                                KdcETypeInfo2Entry {
+                                    etype: einfo.etype as i32,
+                                    salt,
+                                    s2kparams,
+                                }
+                            })
+                            .collect();
+
+                        let etype_padata_value = etype_padata_vec
+                            .to_der()
+                            .and_then(OctetString::new)
+                            .map_err(|e| {
+                                println!("{:#?}", e);
+                                KrbError::DerEncodeOctetString
+                            })?;
+
+                        let pavec = vec![
+                            PaData {
+                                padata_type: PaDataType::PaEncTimestamp as u32,
+                                padata_value: OctetString::new(&[]).map_err(|err| {
+                                    println!("{:#?}", err);
+                                    KrbError::DerEncodeOctetString
+                                })?,
+                            },
+                            PaData {
+                                padata_type: PaDataType::PaEtypeInfo2 as u32,
+                                padata_value: etype_padata_value,
+                            },
+                        ];
+                        Some(pavec)
+                    }
+                    None => None,
+                };
+
+                let as_rep = KdcRep {
+                    pvno: 5,
+                    msg_type: KrbMessageType::KrbAsRep as u8,
+                    padata: pa_data,
+                    crealm: (&name).try_into()?,
+                    cname: (&name).try_into()?,
+                    ticket: ticket.try_into()?,
+                    enc_part: enc_part.try_into()?,
+                };
+
+                Ok(KrbKdcRep::AsRep(as_rep))
             }
             KerberosReply::TGS(TicketGrantReply {}) => {
                 todo!();
@@ -553,7 +618,7 @@ impl TryInto<KrbKdcRep> for KerberosReply {
 
                 let krb_error = KdcKrbError {
                     pvno: 5,
-                    msg_type: 30,
+                    msg_type: KrbMessageType::KrbError as u8,
                     ctime: None,
                     cusec: None,
                     stime,
@@ -593,7 +658,7 @@ impl TryInto<KrbKdcRep> for KerberosReply {
 
                 let krb_error = KdcKrbError {
                     pvno: 5,
-                    msg_type: 30,
+                    msg_type: KrbMessageType::KrbError as u8,
                     ctime: None,
                     cusec: None,
                     stime,
@@ -627,7 +692,7 @@ impl TryFrom<KdcRep> for KerberosReply {
 
         match msg_type {
             KrbMessageType::KrbAsRep => {
-                let enc_part = EncryptedData::try_from(rep.enc_part)?;
+                let enc_part = EncryptedData::try_from(&rep.enc_part)?;
                 trace!(?enc_part);
 
                 let pa_data = rep
@@ -636,7 +701,7 @@ impl TryFrom<KdcRep> for KerberosReply {
                     .transpose()?;
                 trace!(?pa_data);
 
-                let name = (rep.cname, rep.crealm).try_into()?;
+                let name = (&rep.cname, &rep.crealm).try_into()?;
                 let ticket = Ticket::try_from(rep.ticket)?;
 
                 Ok(KerberosReply::AS(AuthenticationReply {

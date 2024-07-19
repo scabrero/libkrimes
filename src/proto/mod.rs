@@ -4,6 +4,7 @@ mod request;
 pub use self::reply::{AuthenticationReply, KerberosReply, PreauthReply, TicketGrantReply};
 pub use self::request::{AuthenticationRequest, KerberosRequest, TicketGrantRequest};
 
+use crate::asn1::enc_ticket_part::EncTicketPart;
 use crate::asn1::{
     constants::{encryption_types::EncryptionType, pa_data_types::PaDataType},
     enc_kdc_rep_part::EncKdcRepPart,
@@ -16,9 +17,9 @@ use crate::asn1::{
     principal_name::PrincipalName,
     realm::Realm,
     tagged_enc_kdc_rep_part::TaggedEncKdcRepPart,
-    tagged_ticket::TaggedTicket,
+    tagged_ticket::Ticket as Asn1Ticket,
     ticket_flags::TicketFlags,
-    Ia5String,
+    Ia5String, OctetString,
 };
 use crate::constants::AES_256_KEY_LEN;
 use crate::crypto::{
@@ -281,9 +282,9 @@ impl TryFrom<Vec<PaData>> for Preauth {
             match padt {
                 PaDataType::PaEncTimestamp => {
                     let enc_timestamp = KdcEncryptedData::from_der(padata_value.as_bytes())
-                        .map_err(|_| KrbError::DerDecodePaData)
-                        .and_then(EncryptedData::try_from)?;
-                    preauth.enc_timestamp = Some(enc_timestamp);
+                        .map_err(|_| KrbError::DerDecodePaData)?;
+                    let foo = EncryptedData::try_from(&enc_timestamp)?;
+                    preauth.enc_timestamp = Some(foo);
                 }
                 PaDataType::PaFxCookie => {
                     preauth.pa_fx_cookie = Some(padata_value.as_bytes().to_vec())
@@ -383,10 +384,10 @@ impl EncryptedData {
     }
 }
 
-impl TryFrom<KdcEncryptedData> for EncryptedData {
+impl TryFrom<&KdcEncryptedData> for EncryptedData {
     type Error = KrbError;
 
-    fn try_from(enc_data: KdcEncryptedData) -> Result<Self, Self::Error> {
+    fn try_from(enc_data: &KdcEncryptedData) -> Result<Self, Self::Error> {
         let etype: EncryptionType = EncryptionType::try_from(enc_data.etype)
             .map_err(|_| KrbError::UnsupportedEncryption)?;
         match etype {
@@ -394,7 +395,7 @@ impl TryFrom<KdcEncryptedData> for EncryptedData {
                 // todo! there is some way to get a number of rounds here
                 // but I can't obviously see it?
                 let kvno = enc_data.kvno;
-                let data = enc_data.cipher.into_bytes();
+                let data = (&enc_data.cipher).clone().into_bytes();
                 Ok(EncryptedData::Aes256CtsHmacSha196 { kvno, data })
             }
             _ => Err(KrbError::UnsupportedEncryption),
@@ -402,21 +403,49 @@ impl TryFrom<KdcEncryptedData> for EncryptedData {
     }
 }
 
-impl TryFrom<TaggedTicket> for Ticket {
+impl TryInto<KdcEncryptedData> for EncryptedData {
     type Error = KrbError;
 
-    fn try_from(tkt: TaggedTicket) -> Result<Self, Self::Error> {
-        let TaggedTicket(tkt) = tkt;
+    fn try_into(self) -> Result<KdcEncryptedData, KrbError> {
+        match self {
+            EncryptedData::Aes256CtsHmacSha196 { kvno, data } => Ok(KdcEncryptedData {
+                etype: EncryptionType::AES256_CTS_HMAC_SHA1_96 as i32,
+                kvno,
+                cipher: OctetString::new(data).map_err(|e| {
+                    println!("{:#?}", e);
+                    KrbError::UnsupportedEncryption // TODO
+                })?,
+            }),
+        }
+    }
+}
 
-        let service = Name::try_from((tkt.sname, tkt.realm))?;
-        let enc_part = EncryptedData::try_from(tkt.enc_part)?;
-        let tkt_vno = tkt.tkt_vno;
+impl TryFrom<Asn1Ticket> for Ticket {
+    type Error = KrbError;
+
+    fn try_from(tkt: Asn1Ticket) -> Result<Self, Self::Error> {
+        let service = Name::try_from((tkt.sname(), tkt.realm()))?;
+        let enc_part = EncryptedData::try_from(tkt.enc_part())?;
+        let tkt_vno = tkt.tkt_vno();
 
         Ok(Ticket {
             tkt_vno,
             service,
             enc_part,
         })
+    }
+}
+
+impl TryInto<Asn1Ticket> for Ticket {
+    type Error = KrbError;
+
+    fn try_into(self) -> Result<Asn1Ticket, KrbError> {
+        Ok(Asn1Ticket::new(
+            self.tkt_vno,
+            (&self.service).try_into()?,
+            (&self.service).try_into()?,
+            self.enc_part.try_into()?,
+        ))
     }
 }
 
@@ -427,7 +456,7 @@ impl TryFrom<EncKdcRepPart> for KdcReplyPart {
         trace!(?enc_kdc_rep_part);
 
         let key = EncryptionKey::try_from(enc_kdc_rep_part.key)?;
-        let server = Name::try_from((enc_kdc_rep_part.server_name, enc_kdc_rep_part.server_realm))?;
+        let server = Name::try_from((&enc_kdc_rep_part.server_name, &enc_kdc_rep_part.server_realm))?;
 
         let nonce = enc_kdc_rep_part.nonce;
         // let flags = enc_kdc_rep_part.flags.bits();
@@ -553,6 +582,30 @@ impl TryInto<PrincipalName> for &Name {
     }
 }
 
+impl TryInto<Realm> for &Name {
+    type Error = KrbError;
+
+    fn try_into(self) -> Result<Realm, KrbError> {
+        match self {
+            Name::Principal { name, realm } => {
+                let realm = KerberosString(Ia5String::new(realm).unwrap());
+                Ok(realm)
+            }
+            Name::SrvInst { service, realm } => {
+                let realm = KerberosString(Ia5String::new(realm).unwrap());
+                Ok(realm)
+            }
+            Name::SrvHst {
+                service,
+                host,
+                realm,
+            } => {
+                let realm = KerberosString(Ia5String::new(realm).unwrap());
+                Ok(realm)
+            }
+        }
+    }
+}
 impl TryInto<(PrincipalName, Realm)> for &Name {
     type Error = KrbError;
 
@@ -639,10 +692,10 @@ impl TryFrom<PrincipalName> for Name {
     }
 }
 
-impl TryFrom<(PrincipalName, Realm)> for Name {
+impl TryFrom<(&PrincipalName, &Realm)> for Name {
     type Error = KrbError;
 
-    fn try_from((princ, realm): (PrincipalName, Realm)) -> Result<Self, Self::Error> {
+    fn try_from((princ, realm): (&PrincipalName, &Realm)) -> Result<Self, Self::Error> {
         let PrincipalName {
             name_type,
             name_string,
