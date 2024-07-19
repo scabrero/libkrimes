@@ -7,7 +7,7 @@ use super::realm::Realm;
 use super::ticket_flags::TicketFlags;
 use super::transited_encoding::TransitedEncoding;
 use der::flagset::FlagSet;
-use der::{Decode, DecodeValue, EncodeValue, FixedTag, Sequence, Tag, TagNumber};
+use der::Sequence;
 
 /// ```text
 /// EncTicketPart   ::= [APPLICATION 3] SEQUENCE {
@@ -25,7 +25,7 @@ use der::{Decode, DecodeValue, EncodeValue, FixedTag, Sequence, Tag, TagNumber};
 /// }
 /// ````
 #[derive(Debug, Eq, PartialEq, Sequence)]
-struct EncTicketPartInner {
+pub(crate) struct EncTicketPart {
     #[asn1(context_specific = "0")]
     pub flags: FlagSet<TicketFlags>,
     #[asn1(context_specific = "1")]
@@ -51,61 +51,4 @@ struct EncTicketPartInner {
     /// "restrictions".
     #[asn1(context_specific = "10", optional = "true")]
     pub authorization_data: Option<Vec<AuthorizationData>>,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct EncTicketPart(pub EncTicketPartInner);
-
-impl EncTicketPart {
-    pub fn new(
-        flags: FlagSet<TicketFlags>,
-        key: EncryptionKey,
-        crealm: Realm,
-        cname: PrincipalName,
-        transited: TransitedEncoding,
-        auth_time: KerberosTime,
-        start_time: Option<KerberosTime>,
-        end_time: KerberosTime,
-        renew_till: Option<KerberosTime>,
-        client_addresses: Option<HostAddresses>,
-        authorization_data: Option<Vec<AuthorizationData>>,
-    ) -> Self {
-        let inner = EncTicketPartInner {
-            flags,
-            key,
-            crealm,
-            cname,
-            transited,
-            auth_time,
-            start_time,
-            end_time,
-            renew_till,
-            client_addresses,
-            authorization_data,
-        };
-        Self(inner)
-    }
-}
-
-impl FixedTag for EncTicketPart {
-    const TAG: Tag = Tag::Application {
-        constructed: true,
-        number: TagNumber::N3,
-    };
-}
-
-impl<'a> DecodeValue<'a> for EncTicketPart {
-    fn decode_value<R: der::Reader<'a>>(reader: &mut R, _header: der::Header) -> der::Result<Self> {
-        let inner: EncTicketPartInner = EncTicketPartInner::decode(reader)?;
-        Ok(Self(inner))
-    }
-}
-
-impl<'a> EncodeValue for EncTicketPart {
-    fn value_len(&self) -> der::Result<der::Length> {
-        EncTicketPartInner::value_len(&self.0)
-    }
-    fn encode_value(&self, encoder: &mut impl der::Writer) -> der::Result<()> {
-        EncTicketPartInner::encode_value(&self.0, encoder)
-    }
 }

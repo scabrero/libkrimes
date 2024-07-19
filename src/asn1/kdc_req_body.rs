@@ -4,7 +4,7 @@ use super::host_addresses::HostAddresses;
 use super::kerberos_time::KerberosTime;
 use super::principal_name::PrincipalName;
 use super::realm::Realm;
-use super::tagged_ticket::Ticket;
+use super::tagged_ticket::TaggedTicket;
 use der::{asn1::BitString, Sequence};
 
 /// ```text
@@ -62,5 +62,5 @@ pub(crate) struct KdcReqBody {
     #[asn1(context_specific = "10", optional = "true")]
     pub(crate) enc_authorization_data: Option<EncryptedData>,
     #[asn1(context_specific = "11", optional = "true")]
-    pub(crate) additional_tickets: Option<Vec<Ticket>>,
+    pub(crate) additional_tickets: Option<Vec<TaggedTicket>>,
 }
