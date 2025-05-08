@@ -261,7 +261,7 @@ mod tests {
         let mut krb_stream = Framed::new(stream, KerberosTcpCodec::default());
 
         let now = SystemTime::now();
-        let client_name = Name::principal("testuser", "EXAMPLE.COM");
+        let client_name = Name::principal("testuser_no_preauth", "EXAMPLE.COM");
         let as_req = KerberosRequest::build_as(
             &client_name,
             Name::service_krbtgt("EXAMPLE.COM"),
@@ -295,8 +295,8 @@ mod tests {
                     &enc_part,
                     etype_info,
                     "EXAMPLE.COM",
-                    "testuser",
-                    "password",
+                    "testuser_no_preauth",
+                    "a-secure-password",
                 )
                 .expect("Failed to derive base key");
 
@@ -360,7 +360,7 @@ mod tests {
 
         let now = SystemTime::now();
 
-        let client_name = Name::principal("testuser_preauth", "EXAMPLE.COM");
+        let client_name = Name::principal("testuser", "EXAMPLE.COM");
         let as_req = KerberosRequest::build_as(
             &client_name,
             Name::service_krbtgt("EXAMPLE.COM"),
@@ -415,16 +415,20 @@ mod tests {
         assert_eq!(service, Name::service_krbtgt("EXAMPLE.COM"));
 
         // Compute the pre-authentication.
-        let base_key =
-            DerivedKey::from_etype_info2(einfo2, "EXAMPLE.COM", "testuser_preauth", "password")
-                .expect("Failed to derive user key");
+        let base_key = DerivedKey::from_etype_info2(
+            einfo2,
+            "EXAMPLE.COM",
+            "testuser",
+            "a-secure-password",
+        )
+        .expect("Failed to derive user key");
 
         let now = SystemTime::now();
         let seconds_since_epoch = now
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("Failed to convert value");
 
-        let client_name = Name::principal("testuser_preauth", "EXAMPLE.COM");
+        let client_name = Name::principal("testuser", "EXAMPLE.COM");
         let as_req = KerberosRequest::build_as(
             &client_name,
             Name::service_krbtgt("EXAMPLE.COM"),
@@ -440,13 +444,13 @@ mod tests {
             .perform_enc_timestamp(
                 password,
                 "EXAMPLE.COM",
-                "testuser_preauth",
+                "testuser",
                 seconds_since_epoch,
             )
             .unwrap();
 
         let as_req = KerberosRequest::build_asreq(
-            Name::principal("testuser_preauth", "EXAMPLE.COM"),
+            Name::principal("testuser", "EXAMPLE.COM"),
             Name::service_krbtgt("EXAMPLE.COM"),
             None,
             now + Duration::from_secs(3600),

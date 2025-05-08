@@ -385,7 +385,7 @@ mod tests {
         }
 
         let (name, ticket, kdc_reply_part) =
-            crate::proto::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
+            crate::proto::get_tgt("testuser1", "EXAMPLE.COM", "a-secure-password").await?;
 
         let path = "/tmp/krb5cc_krime";
         let ccache_name = format!("FILE:{path}");
@@ -409,7 +409,7 @@ mod tests {
         assert!(output.status.success());
 
         let output = String::from_utf8_lossy(output.stdout.as_slice()).to_string();
-        assert!(output.contains("testuser@EXAMPLE.COM"));
+        assert!(output.contains("testuser1@EXAMPLE.COM"));
 
         super::destroy(Some(ccache_name.as_str()))?;
         assert!(!std::fs::exists(path).expect("Unable to check if file exists"));
@@ -428,11 +428,11 @@ mod tests {
 
         let ccache_name = "KEYRING:session:abc";
         let (name, ticket, kdc_reply_part) =
-            crate::proto::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
+            crate::proto::get_tgt("testuser1", "EXAMPLE.COM", "a-secure-password").await?;
         super::store(&name, &ticket, &kdc_reply_part, None, Some(ccache_name))?;
 
         let (name, ticket, kdc_reply_part) =
-            crate::proto::get_tgt("testuser2", "EXAMPLE.COM", "password").await?;
+            crate::proto::get_tgt("testuser2", "EXAMPLE.COM", "a-secure-password").await?;
         super::store(&name, &ticket, &kdc_reply_part, None, Some(ccache_name))?;
 
         let output = Command::new("klist")
@@ -445,7 +445,7 @@ mod tests {
         assert!(output.status.success());
 
         let output = String::from_utf8_lossy(output.stdout.as_slice()).to_string();
-        assert!(output.contains("testuser@EXAMPLE.COM"));
+        assert!(output.contains("testuser1@EXAMPLE.COM"));
         assert!(output.contains("testuser2@EXAMPLE.COM"));
 
         super::destroy(Some(ccache_name))?;
@@ -460,7 +460,7 @@ mod tests {
         assert!(output.status.success());
 
         let output = String::from_utf8_lossy(output.stdout.as_slice()).to_string();
-        assert!(!output.contains("testuser@EXAMPLE.COM"));
+        assert!(!output.contains("testuser1@EXAMPLE.COM"));
         assert!(output.contains("testuser2@EXAMPLE.COM"));
 
         Ok(())
