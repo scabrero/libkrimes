@@ -263,7 +263,7 @@ impl DerivedKey {
         match self {
             DerivedKey::Aes256CtsHmacSha196 { k, .. } => {
                 let data = encrypt_aes256_cts_hmac_sha1_96(k, &data, key_usage)?;
-                Ok(EncryptedData::Aes256CtsHmacSha196 { kvno: None, data })
+                Ok(EncryptedData::Aes256CtsHmacSha196 { kvno: Some(1), data })
             }
         }
     }
