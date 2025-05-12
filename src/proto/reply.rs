@@ -1,7 +1,7 @@
 use super::{
-    AuthenticationTimeBound, DerivedKey, EncTicket, EncryptedData, EtypeInfo2, KdcPrimaryKey, Name,
-    PreauthData, SessionKey, Ticket, TicketGrantRequest, TicketGrantTimeBound,
-    TicketRenewTimeBound,
+    AuthenticationTimeBound, DerivedKey, EncTicket, EncryptedData, EtypeInfo2, KdcPrimaryKey,
+    LastRequestItem, Name, PreauthData, SessionKey, Ticket, TicketGrantRequest,
+    TicketGrantTimeBound, TicketRenewTimeBound,
 };
 use crate::asn1::{
     authorization_data::AuthorizationData,
@@ -16,9 +16,9 @@ use crate::asn1::{
     kdc_rep::KdcRep,
     kerberos_string::KerberosString,
     kerberos_time::KerberosTime,
-    krb_error::KrbError as KdcKrbError,
-    krb_error::MethodData,
+    krb_error::{KrbError as KdcKrbError, MethodData},
     krb_kdc_rep::KrbKdcRep,
+    last_req::LastReqItem,
     pa_data::PaData,
     ticket_flags::TicketFlags,
     transited_encoding::TransitedEncoding,
@@ -84,6 +84,7 @@ pub struct KerberosReplyAuthenticationBuilder {
     server: Name,
 
     nonce: i32,
+    last_req: Vec<LastRequestItem>,
 
     time_bounds: AuthenticationTimeBound,
 
@@ -131,6 +132,7 @@ impl KerberosReply {
         server: Name,
         time_bounds: AuthenticationTimeBound,
         nonce: i32,
+        last_req: Vec<LastRequestItem>,
     ) -> KerberosReplyAuthenticationBuilder {
         let aes256_cts_hmac_sha1_96_iter_count: u32 = PBKDF2_SHA1_ITER;
 
@@ -146,6 +148,7 @@ impl KerberosReply {
             server,
 
             nonce,
+            last_req,
 
             time_bounds,
             flags,
@@ -447,10 +450,15 @@ impl KerberosReplyAuthenticationBuilder {
             .transpose()
             .map_err(|_| KrbError::DerEncodeKerberosTime)?;
 
+        let last_req: Vec<LastReqItem> = self
+            .last_req
+            .iter()
+            .map(|i| i.try_into())
+            .collect::<Result<Vec<LastReqItem>, KrbError>>()?;
+
         let enc_kdc_rep_part = EncKdcRepPart {
             key: session_key.clone(),
-            // Not 100% clear on this field.
-            last_req: Vec::with_capacity(0),
+            last_req,
             nonce: self.nonce,
             key_expiration: None,
             flags: self.flags,

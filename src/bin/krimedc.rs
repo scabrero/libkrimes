@@ -21,8 +21,8 @@ use futures::{SinkExt, StreamExt};
 use libkrime::error::KrbError;
 use libkrime::proto::{
     AuthenticationRequest, AuthenticationTimeBound, DerivedKey, KdcPrimaryKey, KerberosReply,
-    KerberosRequest, Name, TicketGrantRequest, TicketGrantRequestUnverified, TicketGrantTimeBound,
-    TicketRenewTimeBound,
+    KerberosRequest, LastRequestItem, Name, TicketGrantRequest, TicketGrantRequestUnverified,
+    TicketGrantTimeBound, TicketRenewTimeBound,
 };
 use libkrime::KdcTcpCodec;
 use serde::Deserialize;
@@ -75,6 +75,13 @@ async fn process_authentication(
             stime,
         ));
     };
+
+    let mut last_req: Vec<LastRequestItem> = Vec::with_capacity(1);
+    match principal_record.last_request_time {
+        Some(t) => last_req.push(LastRequestItem::LastRequest(t)),
+        None => last_req.push(LastRequestItem::None(SystemTime::UNIX_EPOCH)),
+    }
+    // TODO Update client last request time
 
     // Now, if the req is a user princ or a service princ we have to take different paths.
     // This is because user princs demand pre-auth, but service ones don't. Service princs
@@ -172,6 +179,7 @@ async fn process_authentication(
         Name::service_krbtgt(server_state.realm.as_str()),
         time_bounds,
         auth_req.nonce,
+        last_req,
     );
 
     builder
@@ -379,6 +387,7 @@ impl TryFrom<Config> for ServerState {
                     PrincipalRecord {
                         service: false,
                         base_key,
+                        last_request_time: None,
                     },
                 ))
             })
@@ -400,6 +409,7 @@ impl TryFrom<Config> for ServerState {
                         PrincipalRecord {
                             service: true,
                             base_key,
+                            last_request_time: None,
                         },
                     ))
                 },
@@ -449,6 +459,11 @@ impl TryFrom<Config> for ServerState {
 struct PrincipalRecord {
     service: bool,
     base_key: DerivedKey,
+    // TODO Keep track of last request time.
+    // RFC4120 last-req in EncKDCRepPart
+    // MIT does not seem to implenent this
+    // and always sends the unix epoch.
+    last_request_time: Option<SystemTime>,
 }
 
 #[derive(Debug)]
