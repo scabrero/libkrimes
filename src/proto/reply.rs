@@ -27,7 +27,7 @@ use crate::asn1::{
 use crate::constants::PBKDF2_SHA1_ITER;
 use crate::error::KrbError;
 use crate::proto::ms_pac::AdWin2kPac;
-use der::{flagset::FlagSet, Decode, Encode};
+use der::{Decode, Encode};
 use std::time::{Duration, SystemTime};
 use tracing::{error, trace};
 
@@ -88,7 +88,7 @@ pub struct KerberosReplyAuthenticationBuilder {
 
     time_bounds: AuthenticationTimeBound,
 
-    flags: FlagSet<TicketFlags>,
+    flags: TicketFlags,
 }
 
 pub struct KerberosReplyTicketGrantBuilder {
@@ -102,7 +102,7 @@ pub struct KerberosReplyTicketGrantBuilder {
 
     ticket: Ticket,
 
-    flags: FlagSet<TicketFlags>,
+    flags: TicketFlags,
 }
 
 pub struct KerberosReplyTicketRenewBuilder {
@@ -136,7 +136,7 @@ impl KerberosReply {
     ) -> KerberosReplyAuthenticationBuilder {
         let aes256_cts_hmac_sha1_96_iter_count: u32 = PBKDF2_SHA1_ITER;
 
-        let mut flags = FlagSet::<TicketFlags>::default();
+        let mut flags = TicketFlags::none();
         if time_bounds.renew_until().is_some() {
             flags |= TicketFlags::Renewable;
         }
@@ -199,7 +199,7 @@ impl KerberosReply {
             ticket,
         } = ticket_grant_request;
 
-        let mut flags = FlagSet::<TicketFlags>::default();
+        let mut flags = TicketFlags::none();
         if time_bounds.renew_until().is_some() {
             flags |= TicketFlags::Renewable;
         }
