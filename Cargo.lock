@@ -597,6 +597,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "knife"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "libkrimes",
+]
+
+[[package]]
 name = "krimedc"
 version = "0.1.0"
 dependencies = [
