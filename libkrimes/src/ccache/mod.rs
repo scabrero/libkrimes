@@ -14,6 +14,7 @@ use binrw::{binread, binwrite};
 use der::asn1::OctetString;
 use der::Encode;
 use std::env;
+use std::fmt;
 use std::time::Duration;
 use std::time::SystemTime;
 use tracing::error;
@@ -29,6 +30,7 @@ use uzers::get_current_uid;
 #[binwrite]
 #[bw(big)]
 #[binread]
+#[derive(Debug)]
 struct DataComponent {
     #[bw(try_calc(u32::try_from(value.len())))]
     value_len: u32,
@@ -36,9 +38,19 @@ struct DataComponent {
     value: Vec<u8>,
 }
 
+impl fmt::Display for DataComponent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for b in &self.value {
+            write!(f, "{:02X}", b)?;
+        }
+        Ok(())
+    }
+}
+
 #[binwrite]
 #[bw(big)]
 #[binread]
+#[derive(Debug)]
 struct PrincipalV4 {
     name_type: u32,
     #[bw(try_calc(u32::try_from(components.len())))]
@@ -48,39 +60,86 @@ struct PrincipalV4 {
     components: Vec<DataComponent>,
 }
 
-#[binwrite]
-#[bw(big)]
-#[binread]
-enum Principal {
-    V4(PrincipalV4),
+impl fmt::Display for PrincipalV4 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name: Name = self.try_into().map_err(|_| fmt::Error)?;
+        write!(f, "{}", name)
+    }
 }
 
 #[binwrite]
 #[bw(big)]
 #[binread]
+#[derive(Debug)]
+enum Principal {
+    V4(PrincipalV4),
+}
+
+impl fmt::Display for Principal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Principal::V4(v4) => {
+                let name: Name = v4.try_into().map_err(|_| fmt::Error)?;
+                write!(f, "{name}")
+            }
+        }
+    }
+}
+
+#[binwrite]
+#[bw(big)]
+#[binread]
+#[derive(Debug)]
 struct KeyBlockV4 {
     enc_type: u16,
     data: DataComponent,
 }
 
-#[binwrite]
-#[bw(big)]
-#[binread]
-enum KeyBlock {
-    V4(KeyBlockV4),
+impl fmt::Display for KeyBlockV4 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}] {}", self.enc_type, self.data)
+    }
 }
 
 #[binwrite]
 #[bw(big)]
 #[binread]
+#[derive(Debug)]
+enum KeyBlock {
+    V4(KeyBlockV4),
+}
+
+impl fmt::Display for KeyBlock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            KeyBlock::V4(v4) => write!(f, "{}", v4),
+        }
+    }
+}
+
+#[binwrite]
+#[bw(big)]
+#[binread]
+#[derive(Debug)]
 struct Address {
     addr_type: u16,
     data: DataComponent,
 }
 
+impl fmt::Display for Address {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}] ", self.addr_type)?;
+        for v in &self.data.value {
+            write!(f, "{:02X}", v)?;
+        }
+        writeln!(f)
+    }
+}
+
 #[binwrite]
 #[bw(big)]
 #[binread]
+#[derive(Debug)]
 struct Addresses {
     #[bw(try_calc(u32::try_from(addresses.len())))]
     count: u32,
@@ -91,14 +150,26 @@ struct Addresses {
 #[binwrite]
 #[bw(big)]
 #[binread]
+#[derive(Debug)]
 struct AuthDataComponent {
     ad_type: u16,
     data: DataComponent,
 }
 
+impl fmt::Display for AuthDataComponent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}]", self.ad_type)?;
+        for v in &self.data.value {
+            write!(f, "{:02X}", v)?;
+        }
+        writeln!(f)
+    }
+}
+
 #[binwrite]
 #[bw(big)]
 #[binread]
+#[derive(Debug)]
 struct AuthData {
     #[bw(try_calc(u32::try_from(auth_data.len())))]
     count: u32,
@@ -109,13 +180,23 @@ struct AuthData {
 #[binwrite]
 #[bw(big)]
 #[binread]
+#[derive(Debug)]
 enum Credential {
     V4(CredentialV4),
+}
+
+impl fmt::Display for Credential {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Credential::V4(v4) => write!(f, "{}", v4),
+        }
+    }
 }
 
 #[binwrite]
 #[bw(big)]
 #[binread]
+#[derive(Debug)]
 struct CredentialV4 {
     client: PrincipalV4,
     server: PrincipalV4,
@@ -130,6 +211,14 @@ struct CredentialV4 {
     authdata: AuthData,
     ticket: DataComponent,
     second_ticket: DataComponent,
+}
+
+impl fmt::Display for CredentialV4 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Client: {}", self.client)?;
+        writeln!(f, "Server: {}", self.server)?;
+        Ok(())
+    }
 }
 
 impl CredentialV4 {
@@ -247,7 +336,7 @@ impl TryFrom<&Name> for PrincipalV4 {
     }
 }
 
-impl TryInto<Name> for PrincipalV4 {
+impl TryInto<Name> for &PrincipalV4 {
     type Error = KrbError;
 
     fn try_into(self) -> Result<Name, Self::Error> {
@@ -306,6 +395,11 @@ impl TryFrom<&SessionKey> for KeyBlockV4 {
     }
 }
 
+/// Order of preference:
+/// 1. Given argument
+/// 2. Environment variable
+/// 3. TODO default_ccache_name from /etc/krb5.conf
+/// 4. hardcoded library default: FILE:/tmp/krb5cc_%{uid}
 fn parse_ccache_name(ccache: Option<&str>) -> String {
     let uid = get_current_uid().to_string();
 
@@ -361,6 +455,16 @@ pub fn destroy(ccache_name: Option<&str>) -> Result<(), KrbError> {
     #[cfg(feature = "keyring")]
     if ccache_name.starts_with("KEYRING:") {
         return cc_keyring::destroy(ccache_name.as_str());
+    }
+
+    Err(KrbError::UnsupportedCredentialCacheType)
+}
+
+pub fn dump(ccache_name: Option<&str>) -> Result<(), KrbError> {
+    let ccache_name = parse_ccache_name(ccache_name);
+
+    if ccache_name.starts_with("FILE:") {
+        return cc_file::dump(ccache_name.as_str());
     }
 
     Err(KrbError::UnsupportedCredentialCacheType)

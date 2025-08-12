@@ -676,6 +676,30 @@ pub enum Name {
     */
 }
 
+impl fmt::Display for Name {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Name::Principal { name, realm } => write!(f, "{}@{}", name, realm),
+
+            Name::SrvPrincipal {
+                service,
+                host,
+                realm,
+            } => write!(f, "{}/{}@{}", service, host, realm),
+            Name::SrvHst {
+                service,
+                host,
+                realm,
+            } => write!(f, "{}/{}@{}", service, host, realm),
+            Name::SrvInst {
+                service,
+                instance,
+                realm,
+            } => write!(f, "{}/{}@{}", service, instance.join("/"), realm),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct EtypeInfo2 {
     // The type of encryption for enc ts.

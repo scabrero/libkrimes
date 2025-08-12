@@ -1,13 +1,19 @@
+use crate::asn1::ticket_flags::TicketFlags;
 use crate::ccache::{Credential, CredentialV4, Principal};
 use crate::error::KrbError;
 use crate::proto::{EncTicket, KdcReplyPart, Name};
 use binrw::helpers::until_eof;
 use binrw::io::TakeSeekExt;
+use binrw::BinReaderExt;
 use binrw::BinWrite;
 use binrw::{binread, binwrite};
+use chrono::prelude::DateTime;
+use chrono::Utc;
+use std::fmt;
 use std::fs::File;
-use std::time::Duration;
-use tracing::error;
+use std::io::{BufReader, Read};
+use std::time::{Duration, UNIX_EPOCH};
+use tracing::{debug, error, trace};
 
 #[binwrite]
 #[bw(big)]
@@ -21,9 +27,26 @@ struct HeaderField {
     value: Vec<u8>,
 }
 
+impl fmt::Display for HeaderField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.tag {
+            1 => {
+                let seconds: [u8; 4] = self.value[0..4].try_into().map_err(|_| fmt::Error)?;
+                let seconds = u32::from_be_bytes(seconds);
+                let microseconds: [u8; 4] = self.value[4..8].try_into().map_err(|_| fmt::Error)?;
+                let microseconds = u32::from_be_bytes(microseconds);
+                let duration = Duration::new(seconds as u64, microseconds * 1000);
+                write!(f, "KDC time offset: {:?}", duration)
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
 #[binwrite]
 #[bw(big)]
 #[binread]
+#[derive(Debug)]
 struct FileCredentialCacheHeader {
     #[bw(calc = fields.iter().map(|x| (x.value.len() + 4) as u16).sum::<u16>())]
     length: u16,
@@ -35,6 +58,7 @@ struct FileCredentialCacheHeader {
 #[bw(big, magic = 4u8)]
 #[binread]
 #[br(magic = 4u8)]
+#[derive(Debug)]
 pub(super) struct FileCredentialCacheV4 {
     header: FileCredentialCacheHeader,
     principal: Principal,
@@ -42,10 +66,79 @@ pub(super) struct FileCredentialCacheV4 {
     credentials: Vec<Credential>,
 }
 
+impl fmt::Display for FileCredentialCacheV4 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Header fields:")?;
+        let mut i = 0;
+        for field in &self.header.fields {
+            writeln!(f, "[{}] {}", i, field)?;
+            i += 1;
+        }
+        writeln!(f)?;
+
+        writeln!(f, "Default principal: {}", self.principal)?;
+        writeln!(f)?;
+
+        writeln!(f, "Credentials:")?;
+        i = 0;
+        for cred in &self.credentials {
+            match cred {
+                Credential::V4(v4) => {
+                    writeln!(f, "[{}] Client: {}", i, v4.client)?;
+                    writeln!(f, "[{}] Server: {}", i, v4.server)?;
+                    writeln!(f, "[{}] Key: {}", i, v4.keyblock)?;
+
+                    let d = UNIX_EPOCH + Duration::from_secs(v4.authtime.into());
+                    let d = DateTime::<Utc>::from(d);
+                    writeln!(f, "[{}] Authentication time: {}", i, d)?;
+
+                    let d = UNIX_EPOCH + Duration::from_secs(v4.starttime.into());
+                    let d = DateTime::<Utc>::from(d);
+                    writeln!(f, "[{}] Start time; {}", i, d)?;
+
+                    let d = UNIX_EPOCH + Duration::from_secs(v4.endtime.into());
+                    let d = DateTime::<Utc>::from(d);
+                    writeln!(f, "[{}] End time: {}", i, d)?;
+
+                    let d = UNIX_EPOCH + Duration::from_secs(v4.renew_till.into());
+                    let d = DateTime::<Utc>::from(d);
+                    writeln!(f, "[{}] Renew until: {}", i, d)?;
+
+                    writeln!(f, "[{}] Is SKEY: {}", i, v4.is_skey)?;
+
+                    let t = TicketFlags::from_bits(v4.ticket_flags);
+                    writeln!(f, "[{}] Ticket flags: {}", i, t)?;
+
+                    writeln!(f, "[{}] Addresses:", i)?;
+                    let mut j = 0;
+                    for addr in &v4.addresses.addresses {
+                        writeln!(f, "  [{}] {}", j, addr)?;
+                        j += 1;
+                    }
+
+                    writeln!(f, "[{}] Authorization data:", i)?;
+                    j = 0;
+                    for a in &v4.authdata.auth_data {
+                        writeln!(f, "  [{}] {}", j, a)?;
+                        j += 1;
+                    }
+
+                    writeln!(f, "[{}] Ticket: {}", i, v4.ticket)?;
+                    writeln!(f, "[{}] Second Ticket: {}", i, v4.second_ticket)?;
+                }
+            }
+            writeln!(f)?;
+            i += 1;
+        }
+        Ok(())
+    }
+}
+
 #[binwrite]
 #[bw(big, magic = 5u8)]
 #[binread]
 #[br(magic = 5u8)]
+#[derive(Debug)]
 pub(super) enum FileCredentialCache {
     V4(FileCredentialCacheV4),
 }
@@ -131,6 +224,22 @@ impl FileCredentialCache {
 
         Ok(FileCredentialCache::V4(ccache))
     }
+
+    pub fn read(inner: &Vec<u8>) -> Result<Self, KrbError> {
+        let mut reader = binrw::io::Cursor::new(inner);
+        let ccache: FileCredentialCache = reader
+            .read_type(binrw::Endian::Big)
+            .expect("Unable to create reader");
+        Ok(ccache)
+    }
+}
+
+impl fmt::Display for FileCredentialCache {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FileCredentialCache::V4(v4) => write!(f, "{v4}"),
+        }
+    }
 }
 
 pub fn store(
@@ -165,23 +274,36 @@ pub fn destroy(path: &str) -> Result<(), KrbError> {
     Ok(())
 }
 
+pub fn dump(path: &str) -> Result<(), KrbError> {
+    let path = path.strip_prefix("FILE:").unwrap_or(path);
+    trace!(?path, "Loading credential cache file");
+
+    let f = File::open(path).map_err(|e| {
+        error!(?path, ?e, "Failed to open file");
+        KrbError::IoError
+    })?;
+
+    let mut reader = BufReader::new(f);
+    let mut buffer = Vec::new();
+    reader.read_to_end(&mut buffer).map_err(|e| {
+        error!(?path, ?e, "Failed to read credential cache");
+        KrbError::IoError
+    })?;
+
+    let ccache = FileCredentialCache::read(&buffer)?;
+    debug!(?ccache, "Credential cache successfully loaded");
+
+    println!("{ccache}");
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use binrw::BinReaderExt;
     use binrw::BinWrite;
     use std::time::Duration;
     use tracing::warn;
-
-    impl FileCredentialCache {
-        pub fn read(inner: &Vec<u8>) -> Result<Self, KrbError> {
-            let mut reader = binrw::io::Cursor::new(inner);
-            let ccache: FileCredentialCache = reader
-                .read_type(binrw::Endian::Big)
-                .expect("Unable to create reader");
-            Ok(ccache)
-        }
-    }
 
     #[tokio::test]
     async fn test_ccache_file_read_write() -> Result<(), KrbError> {

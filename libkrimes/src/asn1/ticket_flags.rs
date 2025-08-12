@@ -1,6 +1,7 @@
 use bitmask_enum::bitmask;
 use der::asn1::BitStringRef;
 use der::{Decode, EncodeValue, Length, Result, Tagged, Writer};
+use std::fmt;
 
 /// ```text
 /// TicketFlags     ::= KerberosFlags
@@ -37,13 +38,99 @@ pub enum TicketFlags {
     HwAuthent = 1 << 11,
     TransitedPolicyChecked = 1 << 12,
     OkAsDelegate = 1 << 13,
+    EncPaRep = 1 << 15,
     Test = 1 << 31,
+}
+impl fmt::Display for TicketFlags {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut str_flags: Vec<String> = vec![];
+        let mut flags = *self;
+        if flags.contains(TicketFlags::Reserved) {
+            str_flags.push("Reserved".to_string());
+            flags &= TicketFlags::Reserved.not();
+        }
+        if flags.contains(TicketFlags::Forwardable) {
+            str_flags.push("Forwardable".to_string());
+            flags &= TicketFlags::Forwardable.not();
+        }
+        if flags.contains(TicketFlags::Forwarded) {
+            str_flags.push("Forwarded".to_string());
+            flags &= TicketFlags::Forwarded.not();
+        }
+        if flags.contains(TicketFlags::Proxiable) {
+            str_flags.push("Proxiable".to_string());
+            flags &= TicketFlags::Proxiable.not();
+        }
+        if flags.contains(TicketFlags::Proxy) {
+            str_flags.push("Proxy".to_string());
+            flags &= TicketFlags::Proxy.not();
+        }
+        if flags.contains(TicketFlags::MayPostdate) {
+            str_flags.push("MayPostdate".to_string());
+            flags &= TicketFlags::MayPostdate.not();
+        }
+        if flags.contains(TicketFlags::Postdated) {
+            str_flags.push("Postdated".to_string());
+            flags &= TicketFlags::Postdated.not();
+        }
+        if flags.contains(TicketFlags::Invalid) {
+            str_flags.push("Invalid".to_string());
+            flags &= TicketFlags::Invalid.not();
+        }
+        if flags.contains(TicketFlags::Renewable) {
+            str_flags.push("Renewable".to_string());
+            flags &= TicketFlags::Renewable.not();
+        }
+        if flags.contains(TicketFlags::Initial) {
+            str_flags.push("Initial".to_string());
+            flags &= TicketFlags::Initial.not();
+        }
+        if flags.contains(TicketFlags::PreAuthent) {
+            str_flags.push("PreAuthent".to_string());
+            flags &= TicketFlags::PreAuthent.not();
+        }
+        if flags.contains(TicketFlags::HwAuthent) {
+            str_flags.push("HwAuthent".to_string());
+            flags &= TicketFlags::HwAuthent.not();
+        }
+        if flags.contains(TicketFlags::TransitedPolicyChecked) {
+            str_flags.push("TransitedPolicyChecked".to_string());
+            flags &= TicketFlags::TransitedPolicyChecked.not();
+        }
+        if flags.contains(TicketFlags::OkAsDelegate) {
+            str_flags.push("OkAsDelegate".to_string());
+            flags &= TicketFlags::OkAsDelegate.not();
+        }
+        if flags.contains(TicketFlags::EncPaRep) {
+            str_flags.push("EncPaRep".to_string());
+            flags &= TicketFlags::EncPaRep.not();
+        }
+        if flags.contains(TicketFlags::Test) {
+            str_flags.push("Test".to_string());
+            flags &= TicketFlags::Test.not();
+        }
+        if flags.bits != 0 {
+            str_flags.push(format!("(unknown bits 0x{:08X})", flags.bits));
+        }
+        if str_flags.is_empty() {
+            write!(f, "<empty>")?;
+        } else {
+            write!(f, "{}", str_flags.join(" | "))?;
+        }
+        Ok(())
+    }
 }
 
 impl TicketFlags {
-    fn from_bits(val: u32) -> Self {
+    pub fn from_bits(bits: u32) -> Self {
+        let mut swap = 0u32;
+        for i in 0..32 {
+            let on = bits & (1 << i);
+            swap |= on >> i << (32 - i - 1);
+        }
+
         let mut tf = TicketFlags::none();
-        tf.bits = val;
+        tf.bits = swap;
         tf
     }
 }
@@ -63,12 +150,7 @@ impl<'a> Decode<'a> for TicketFlags {
             )
         })?;
         let bits = u32::from_be_bytes(bytes);
-        let mut swap = 0u32;
-        for i in 0..32 {
-            let on = bits & (1 << i);
-            swap |= on >> i << (32 - i - 1);
-        }
-        Ok(TicketFlags::from_bits(swap))
+        Ok(TicketFlags::from_bits(bits))
     }
 }
 
