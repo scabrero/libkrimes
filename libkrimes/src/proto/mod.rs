@@ -896,7 +896,6 @@ impl EncryptedData {
             .map(|TaggedEncTicketPart(part)| part)
     }
 
-    #[cfg(test)]
     pub(crate) fn decrypt_enc_kdc_rep(
         &self,
         base_key: &DerivedKey,
@@ -1522,77 +1521,6 @@ impl Preauth {
     pub fn enc_timestamp(&self) -> Option<&EncryptedData> {
         self.enc_timestamp.as_ref()
     }
-}
-
-// TODO; This should probably be a test-only function or removed. Or find a way to make it a proper
-// client.
-#[cfg(test)]
-pub async fn get_tgt(
-    principal: &str,
-    realm: &str,
-    password: &str,
-) -> Result<(Name, EncTicket, KdcReplyPart), KrbError> {
-    use crate::KerberosTcpCodec;
-    use futures::SinkExt;
-    use futures::StreamExt;
-    use tokio::net::TcpStream;
-    use tokio_util::codec::Framed;
-
-    let kdc_addr = option_env!("LIBKRIMES_TEST_KDC_ADDRESS").unwrap_or("127.0.0.1:55000");
-
-    let stream = TcpStream::connect(kdc_addr)
-        .await
-        .expect("Unable to connect to localhost:55000");
-
-    let mut krb_stream = Framed::new(stream, KerberosTcpCodec::default());
-
-    let now = SystemTime::now();
-    let client_name = Name::principal(principal, realm);
-    let as_req = KerberosRequest::as_builder(
-        &client_name,
-        Name::service_krbtgt(realm),
-        now + Duration::from_secs(3600),
-    )
-    .renew_until(Some(now + Duration::from_secs(86400 * 7)))
-    .build();
-
-    // Write a request
-    krb_stream
-        .send(as_req)
-        .await
-        .expect("Failed to transmit request");
-
-    let response = krb_stream
-        .next()
-        .await
-        .expect("Error reading from stream")
-        .expect("No messages available in stream");
-
-    let (name, ticket, kdc_reply): (Name, EncTicket, KdcReplyPart) = match response {
-        KerberosReply::AS(AuthenticationReply {
-            name,
-            enc_part,
-            pa_data,
-            ticket,
-        }) => {
-            let etype_info = pa_data
-                .as_ref()
-                .map(|pa_inner| pa_inner.etype_info2.as_slice());
-
-            let base_key = DerivedKey::from_encrypted_reply(
-                &enc_part, etype_info, realm, principal, password, 1,
-            )?;
-
-            let kdc_reply = enc_part.decrypt_enc_kdc_rep(&base_key)?;
-            (name, ticket, kdc_reply)
-        }
-        KerberosReply::ERR(err) => {
-            panic!("{err:?}");
-        }
-        _ => unreachable!(),
-    };
-
-    Ok((name, ticket, kdc_reply))
 }
 
 #[cfg(test)]

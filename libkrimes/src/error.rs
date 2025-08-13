@@ -52,6 +52,8 @@ pub enum KrbError {
     RequestTooLarge,
     RequestIoRead,
 
+    AsError,
+
     TgsMissingPaApReq,
     TgsInvalidPaApReq,
 

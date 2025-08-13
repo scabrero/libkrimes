@@ -494,7 +494,7 @@ mod tests {
         }
 
         let (name, ticket, kdc_reply_part) =
-            crate::proto::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
+            crate::client::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
 
         let path = "/tmp/krb5cc_krime";
         let ccache_name = format!("FILE:{path}");
@@ -537,11 +537,11 @@ mod tests {
 
         let ccache_name = "KEYRING:session:abc";
         let (name, ticket, kdc_reply_part) =
-            crate::proto::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
+            crate::client::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
         super::store(&name, &ticket, &kdc_reply_part, None, Some(ccache_name))?;
 
         let (name, ticket, kdc_reply_part) =
-            crate::proto::get_tgt("testuser2", "EXAMPLE.COM", "password").await?;
+            crate::client::get_tgt("testuser2", "EXAMPLE.COM", "password").await?;
         super::store(&name, &ticket, &kdc_reply_part, None, Some(ccache_name))?;
 
         let output = Command::new("klist")

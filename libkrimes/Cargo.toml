@@ -60,6 +60,7 @@ uuid = { workspace = true }
 int-enum = "1.2.0"
 chrono = "0.4.41"
 walkdir = "2.5.0"
+futures = { workspace = true }
 
 [dev-dependencies]
 base64 = "0.22.0"
@@ -67,4 +68,3 @@ clap = { version = "^4.5.8", features = ["derive"] }
 tempfile = "3.19.1"
 which = "8.0.0"
 tracing-subscriber = { workspace = true }
-futures = { workspace = true }

@@ -4,8 +4,8 @@ use crate::constants::PBKDF2_SHA1_ITER;
 use crate::proto::reply::KerberosReply;
 use crate::proto::{
     AuthenticationTimeBound, DerivedKey, EncTicket, EncTicketPart, EncryptedData, KdcEncryptionKey,
-    KdcPrimaryKey, KerberosTime, KrbError, LastRequestItem, Name, PreauthData, SessionKey,
-    TicketFlags,
+    KdcPrimaryKey, KdcReplyPart, KerberosTime, KrbError, LastRequestItem, Name, PreauthData,
+    SessionKey, TicketFlags,
 };
 use std::time::SystemTime;
 
@@ -15,6 +15,40 @@ pub struct AuthenticationReply {
     pub(crate) enc_part: EncryptedData,
     pub(crate) pa_data: Option<PreauthData>,
     pub(crate) ticket: EncTicket,
+}
+
+impl AuthenticationReply {
+    pub fn name(&self) -> &Name {
+        &self.name
+    }
+
+    pub fn ticket(&self) -> &EncTicket {
+        &self.ticket
+    }
+
+    pub fn kdc_reply_part(
+        &self,
+        username: &str,
+        realm: &str,
+        passphrase: &str,
+    ) -> Result<KdcReplyPart, KrbError> {
+        let pa_data_etype_info2 = self
+            .pa_data
+            .as_ref()
+            .map(|inner| inner.etype_info2.as_slice());
+
+        let encrypted_data = &self.enc_part;
+        let base_key = DerivedKey::from_encrypted_reply(
+            encrypted_data,
+            pa_data_etype_info2,
+            realm,
+            username,
+            passphrase,
+            1,
+        )?;
+
+        encrypted_data.decrypt_enc_kdc_rep(&base_key)
+    }
 }
 
 pub struct AuthenticationReplyBuilder {

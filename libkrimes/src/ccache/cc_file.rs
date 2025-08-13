@@ -333,7 +333,7 @@ mod tests {
         }
 
         let (name, ticket, kdc_reply) =
-            crate::proto::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
+            crate::client::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
 
         /*
          * This is a file ccache produced by MIT's kinit manually edited
