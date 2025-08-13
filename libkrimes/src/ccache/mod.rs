@@ -1,3 +1,4 @@
+mod cc_dir;
 mod cc_file;
 
 #[cfg(feature = "keyring")]
@@ -465,6 +466,10 @@ pub fn dump(ccache_name: Option<&str>) -> Result<(), KrbError> {
 
     if ccache_name.starts_with("FILE:") {
         return cc_file::dump(ccache_name.as_str());
+    }
+
+    if ccache_name.starts_with("DIR:") {
+        return cc_dir::dump(ccache_name.as_str());
     }
 
     Err(KrbError::UnsupportedCredentialCacheType)
