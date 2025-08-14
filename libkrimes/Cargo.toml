@@ -61,6 +61,7 @@ int-enum = "1.2.0"
 chrono = "0.4.41"
 walkdir = "2.5.0"
 futures = { workspace = true }
+hickory-resolver = "0.25.2"
 
 [dev-dependencies]
 base64 = "0.22.0"

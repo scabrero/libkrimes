@@ -52,6 +52,7 @@ pub enum KrbError {
     RequestTooLarge,
     RequestIoRead,
 
+    KdcNotFound,
     AsError,
 
     TgsMissingPaApReq,
@@ -80,6 +81,7 @@ pub enum KrbError {
     IoError,
     BinRWError,
     KeyutilsError,
+    DnsError,
 
     InvalidMessageType,
     InvalidMessageDirection,

@@ -1,33 +1,40 @@
+mod discovery;
+
 use crate::error::KrbError;
 use crate::proto::{EncTicket, KdcReplyPart, KerberosReply, KerberosRequest, Name};
 use std::time::{Duration, SystemTime};
+use tokio::net::TcpStream;
 use tracing::error;
-
-fn get_kdc_addr() -> Result<String, KrbError> {
-    // TODO
-    let kdc_addr = option_env!("LIBKRIMES_TEST_KDC_ADDRESS")
-        .unwrap_or("127.0.0.1:55000")
-        .to_string();
-    Ok(kdc_addr)
-}
 
 pub async fn get_tgt(
     username: &str,
     realm: &str,
     passphrase: &str,
 ) -> Result<(Name, EncTicket, KdcReplyPart), KrbError> {
+    match self::discovery::get_kdc_addr(realm).await? {
+        discovery::Transport::Tcp(addrs) => {
+            for addr in &addrs {
+                match TcpStream::connect(addr).await {
+                    Ok(stream) => return get_tgt_tcp(username, realm, passphrase, stream).await,
+                    Err(e) => error!(?e, "Failed to connect"),
+                }
+            }
+        }
+    }
+
+    Err(KrbError::KdcNotFound)
+}
+
+async fn get_tgt_tcp(
+    username: &str,
+    realm: &str,
+    passphrase: &str,
+    stream: TcpStream,
+) -> Result<(Name, EncTicket, KdcReplyPart), KrbError> {
     use crate::KerberosTcpCodec;
     use futures::SinkExt;
     use futures::StreamExt;
-    use tokio::net::TcpStream;
     use tokio_util::codec::Framed;
-
-    let kdc_addr = get_kdc_addr()?;
-
-    let stream = TcpStream::connect(&kdc_addr).await.map_err(|e| {
-        error!(?e, ?kdc_addr, "Failed to connect");
-        KrbError::IoError
-    })?;
 
     let mut krb_stream = Framed::new(stream, KerberosTcpCodec::default());
 
