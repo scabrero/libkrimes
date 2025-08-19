@@ -48,6 +48,7 @@ pub enum KrbError {
     PreauthMissingEtypeInfo2,
     PreauthInvalidUnixTs,
     PreauthInvalidS2KParams,
+    PreauthNotFromTgt,
 
     RequestTooLarge,
     RequestIoRead,

@@ -1,7 +1,8 @@
 use clap::{Parser, Subcommand};
-use opt::CcacheDumpOpt;
+use opt::{CcacheDumpOpt, InitCredsOpt};
 
 mod ccache;
+mod initcreds;
 mod opt;
 
 #[derive(Debug, Parser)]
@@ -13,6 +14,7 @@ struct Cli {
 
 #[derive(Debug, Clone, Subcommand)]
 enum KnifeCommands {
+    Init(InitCredsOpt),
     Ccache {
         #[clap(subcommand)]
         command: CcacheOpt,
@@ -24,7 +26,8 @@ enum CcacheOpt {
     Dump(CcacheDumpOpt),
 }
 
-fn main() {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), ()> {
     tracing_subscriber::fmt::init();
 
     let cli = Cli::parse();
@@ -32,5 +35,7 @@ fn main() {
         KnifeCommands::Ccache { command } => match command {
             CcacheOpt::Dump(opt) => ccache::dump(opt),
         },
+        KnifeCommands::Init(opt) => initcreds::acquire(opt).await,
     }
+    Ok(())
 }
