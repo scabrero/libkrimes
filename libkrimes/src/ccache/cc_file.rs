@@ -1,3 +1,5 @@
+use crate::asn1::tagged_ticket::TaggedTicket as Asn1TaggedTicket;
+use crate::asn1::tagged_ticket::Ticket as Asn1Ticket;
 use crate::asn1::ticket_flags::TicketFlags;
 use crate::ccache::{Credential, CredentialV4, Principal};
 use crate::error::KrbError;
@@ -9,6 +11,7 @@ use binrw::BinWrite;
 use binrw::{binread, binwrite};
 use chrono::prelude::DateTime;
 use chrono::Utc;
+use der::Encode;
 use std::fmt;
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -123,7 +126,26 @@ impl fmt::Display for FileCredentialCacheV4 {
                         j += 1;
                     }
 
-                    writeln!(f, "[{}] Ticket: {}", i, v4.ticket)?;
+                    writeln!(f, "[{}] Ticket (raw data): {}", i, v4.ticket)?;
+
+                    let t = &v4.ticket;
+                    if let Ok(t) = TryInto::<Asn1TaggedTicket>::try_into(t) {
+                        let t: Asn1Ticket = t.into();
+                        writeln!(
+                            f,
+                            "[{}] Ticket ({} bytes):",
+                            i,
+                            t.encoded_len().expect("failed")
+                        )?;
+                        writeln!(f, "    Format version: {}", t.tkt_vno)?;
+                        writeln!(f, "    Realm: {}", t.realm)?;
+                        writeln!(f, "    Server identity: {}", t.sname)?;
+                        writeln!(f, "    Encrypted part:")?;
+                        writeln!(f, "      Encryption type: {}", t.enc_part.etype)?;
+                        writeln!(f, "      Key version number: {:?}", t.enc_part.kvno)?;
+                        writeln!(f, "      Cipher: {:?}", t.enc_part.cipher)?;
+                    }
+
                     writeln!(f, "[{}] Second Ticket: {}", i, v4.second_ticket)?;
                 }
             }

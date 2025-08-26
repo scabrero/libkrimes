@@ -13,6 +13,7 @@ use crate::error::KrbError;
 use crate::proto::{EncTicket, EncryptedData, KdcReplyPart, Name, SessionKey};
 use binrw::{binread, binwrite};
 use der::asn1::OctetString;
+use der::Decode;
 use der::Encode;
 use std::env;
 use std::fmt;
@@ -48,6 +49,17 @@ impl fmt::Display for DataComponent {
     }
 }
 
+impl TryInto<Asn1TaggedTicket> for &DataComponent {
+    type Error = KrbError;
+    fn try_into(self) -> Result<Asn1TaggedTicket, Self::Error> {
+        let ticket = Asn1TaggedTicket::from_der(&self.value).map_err(|e| {
+            error!(?e, "Failed to decode");
+            KrbError::DerDecodeTaggedTicket
+        })?;
+        Ok(ticket)
+    }
+}
+
 #[binwrite]
 #[bw(big)]
 #[binread]
@@ -63,7 +75,16 @@ struct PrincipalV4 {
 
 impl fmt::Display for PrincipalV4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let name: Name = self.try_into().map_err(|_| fmt::Error)?;
+        let name: Name = self.try_into().map_err(|e| {
+            error!(
+                ?e,
+                "Failed to convert: name_type={:?}, components={:?}, realm={:?}",
+                self.name_type,
+                self.components,
+                self.realm
+            );
+            fmt::Error
+        })?;
         write!(f, "{}", name)
     }
 }
@@ -186,14 +207,6 @@ enum Credential {
     V4(CredentialV4),
 }
 
-impl fmt::Display for Credential {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Credential::V4(v4) => write!(f, "{}", v4),
-        }
-    }
-}
-
 #[binwrite]
 #[bw(big)]
 #[binread]
@@ -212,14 +225,6 @@ struct CredentialV4 {
     authdata: AuthData,
     ticket: DataComponent,
     second_ticket: DataComponent,
-}
-
-impl fmt::Display for CredentialV4 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Client: {}", self.client)?;
-        writeln!(f, "Server: {}", self.server)?;
-        Ok(())
-    }
 }
 
 impl CredentialV4 {
@@ -374,6 +379,25 @@ impl TryInto<Name> for &PrincipalV4 {
                         .iter()
                         .map(|x| String::from_utf8_lossy(x.value.as_slice()).to_string())
                         .collect::<Vec<String>>(),
+                    realm: String::from_utf8_lossy(self.realm.value.as_slice()).to_string(),
+                };
+                Ok(n)
+            }
+            PrincipalNameType::NtSrvHst => {
+                let n: Name = Name::SrvHst {
+                    service: self
+                        .components
+                        .first()
+                        .ok_or(KrbError::NameNotPrincipal)
+                        .map(|x| String::from_utf8_lossy(x.value.as_slice()).to_string())?,
+                    host: self
+                        .components
+                        .get(1..)
+                        .ok_or(KrbError::NameNotPrincipal)?
+                        .iter()
+                        .map(|x| String::from_utf8_lossy(x.value.as_slice()).to_string())
+                        .collect::<Vec<String>>()
+                        .join(""),
                     realm: String::from_utf8_lossy(self.realm.value.as_slice()).to_string(),
                 };
                 Ok(n)

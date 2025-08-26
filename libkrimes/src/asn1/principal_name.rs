@@ -1,6 +1,7 @@
 use super::kerberos_string::KerberosString;
 use crate::error::KrbError;
 use der::Sequence;
+use std::fmt;
 use std::str::FromStr;
 
 /// ```text
@@ -25,6 +26,21 @@ pub(crate) struct PrincipalName {
     // PrincipalNames will have only a few components (typically one or
     // two).
     pub(crate) name_string: Vec<KerberosString>,
+}
+
+impl fmt::Display for PrincipalName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "type: {}, components: {}",
+            self.name_type,
+            self.name_string
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<String>>()
+                .join("/")
+        )
+    }
 }
 
 impl From<PrincipalName> for String {

@@ -28,6 +28,8 @@ pub enum KrbError {
     MissingRealm,
     DerDecodePaData,
     DerDecodeEtypeInfo2,
+    DerDecodeTicket,
+    DerDecodeTaggedTicket,
     DerEncodePaEncTsEnc,
     DerDecodePaEncTsEnc,
     DerDecodeEncKdcRepPart,
