@@ -19,8 +19,9 @@ use std::env;
 use std::fmt;
 use std::time::Duration;
 use std::time::SystemTime;
-use tracing::error;
+use tracing::{debug, error, trace};
 use uzers::get_current_uid;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /* TODO:
  *   - Handle cache conf entries. CredentialCache::new() could take a KV pair collection
@@ -32,7 +33,7 @@ use uzers::get_current_uid;
 #[binwrite]
 #[bw(big)]
 #[binread]
-#[derive(Debug)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 struct DataComponent {
     #[bw(try_calc(u32::try_from(value.len())))]
     value_len: u32,
@@ -63,7 +64,7 @@ impl TryInto<Asn1TaggedTicket> for &DataComponent {
 #[binwrite]
 #[bw(big)]
 #[binread]
-#[derive(Debug)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 struct PrincipalV4 {
     name_type: u32,
     #[bw(try_calc(u32::try_from(components.len())))]
@@ -92,7 +93,7 @@ impl fmt::Display for PrincipalV4 {
 #[binwrite]
 #[bw(big)]
 #[binread]
-#[derive(Debug)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 enum Principal {
     V4(PrincipalV4),
 }
@@ -111,7 +112,7 @@ impl fmt::Display for Principal {
 #[binwrite]
 #[bw(big)]
 #[binread]
-#[derive(Debug)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 struct KeyBlockV4 {
     enc_type: u16,
     data: DataComponent,
@@ -126,7 +127,7 @@ impl fmt::Display for KeyBlockV4 {
 #[binwrite]
 #[bw(big)]
 #[binread]
-#[derive(Debug)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 enum KeyBlock {
     V4(KeyBlockV4),
 }
@@ -142,7 +143,7 @@ impl fmt::Display for KeyBlock {
 #[binwrite]
 #[bw(big)]
 #[binread]
-#[derive(Debug)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 struct Address {
     addr_type: u16,
     data: DataComponent,
@@ -161,7 +162,7 @@ impl fmt::Display for Address {
 #[binwrite]
 #[bw(big)]
 #[binread]
-#[derive(Debug)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 struct Addresses {
     #[bw(try_calc(u32::try_from(addresses.len())))]
     count: u32,
@@ -172,7 +173,7 @@ struct Addresses {
 #[binwrite]
 #[bw(big)]
 #[binread]
-#[derive(Debug)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 struct AuthDataComponent {
     ad_type: u16,
     data: DataComponent,
@@ -191,7 +192,7 @@ impl fmt::Display for AuthDataComponent {
 #[binwrite]
 #[bw(big)]
 #[binread]
-#[derive(Debug)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 struct AuthData {
     #[bw(try_calc(u32::try_from(auth_data.len())))]
     count: u32,
@@ -202,7 +203,7 @@ struct AuthData {
 #[binwrite]
 #[bw(big)]
 #[binread]
-#[derive(Debug)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 enum Credential {
     V4(CredentialV4),
 }
@@ -210,7 +211,7 @@ enum Credential {
 #[binwrite]
 #[bw(big)]
 #[binread]
-#[derive(Debug)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 struct CredentialV4 {
     client: PrincipalV4,
     server: PrincipalV4,
@@ -438,65 +439,78 @@ fn parse_ccache_name(ccache: Option<&str>) -> String {
     .replace("%{uid}", uid.as_str())
 }
 
-pub fn store(
-    name: &Name,
-    ticket: &EncTicket,
-    kdc_reply_part: &KdcReplyPart,
-    clock_skew: Option<Duration>,
-    ccache_name: Option<&str>,
-) -> Result<(), KrbError> {
-    let ccache_name = parse_ccache_name(ccache_name);
+pub trait CredentialCache {
+    //const char * (KRB5_CALLCONV *get_name)(krb5_context, krb5_ccache);
+    //krb5_error_code (KRB5_CALLCONV *gen_new)(krb5_context, krb5_ccache *);
+    fn init(&mut self, name: &Name, clock_skew: Option<Duration>) -> Result<(), KrbError>;
+    fn destroy(&mut self) -> Result<(), KrbError>;
+    //krb5_error_code (KRB5_CALLCONV *close)(krb5_context, krb5_ccache);
 
-    if ccache_name.starts_with("FILE:") {
-        return cc_file::store(
-            name,
-            ticket,
-            kdc_reply_part,
-            clock_skew,
-            ccache_name.as_str(),
-        );
-    }
+    fn store(
+        &mut self,
+        name: &Name,
+        ticket: &EncTicket,
+        kdc_reply: &KdcReplyPart,
+    ) -> Result<(), KrbError>;
 
-    #[cfg(feature = "keyring")]
-    if ccache_name.starts_with("KEYRING:") {
-        return cc_keyring::store(
-            name,
-            ticket,
-            kdc_reply_part,
-            clock_skew,
-            ccache_name.as_str(),
-        );
-    }
+    #[cfg(debug_assertions)]
+    fn dump(&self) -> Result<(), KrbError>;
 
-    Err(KrbError::UnsupportedCredentialCacheType)
+    //krb5_error_code (KRB5_CALLCONV *retrieve)(krb5_context, krb5_ccache,
+    //                                          krb5_flags, krb5_creds *,
+    //                                          krb5_creds *);
+    //krb5_error_code (KRB5_CALLCONV *get_princ)(krb5_context, krb5_ccache,
+    //                                           krb5_principal *);
+    //krb5_error_code (KRB5_CALLCONV *get_first)(krb5_context, krb5_ccache,
+    //                                           krb5_cc_cursor *);
+    //krb5_error_code (KRB5_CALLCONV *get_next)(krb5_context, krb5_ccache,
+    //                                          krb5_cc_cursor *, krb5_creds *);
+    //krb5_error_code (KRB5_CALLCONV *end_get)(krb5_context, krb5_ccache,
+    //                                         krb5_cc_cursor *);
+    //krb5_error_code (KRB5_CALLCONV *remove_cred)(krb5_context, krb5_ccache,
+    //                                             krb5_flags, krb5_creds *);
+    //krb5_error_code (KRB5_CALLCONV *set_flags)(krb5_context, krb5_ccache,
+    //                                           krb5_flags);
+    //krb5_error_code (KRB5_CALLCONV *get_flags)(krb5_context, krb5_ccache,
+    //                                           krb5_flags *);
+    //krb5_error_code (KRB5_CALLCONV *ptcursor_new)(krb5_context,
+    //                                              krb5_cc_ptcursor *);
+    //krb5_error_code (KRB5_CALLCONV *ptcursor_next)(krb5_context,
+    //                                               krb5_cc_ptcursor,
+    //                                               krb5_ccache *);
+    //krb5_error_code (KRB5_CALLCONV *ptcursor_free)(krb5_context,
+    //                                               krb5_cc_ptcursor *);
+    //krb5_error_code (KRB5_CALLCONV *replace)(krb5_context, krb5_ccache,
+    //                                         krb5_principal, krb5_creds **);
+    //krb5_error_code (KRB5_CALLCONV *wasdefault)(krb5_context, krb5_ccache,
+    //                                            krb5_timestamp *);
+    //krb5_error_code (KRB5_CALLCONV *lock)(krb5_context, krb5_ccache);
+    //krb5_error_code (KRB5_CALLCONV *unlock)(krb5_context, krb5_ccache);
+    //krb5_error_code (KRB5_CALLCONV *switch_to)(krb5_context, krb5_ccache);
 }
 
-pub fn destroy(ccache_name: Option<&str>) -> Result<(), KrbError> {
+///
+/// ccache_name is in the form type:residual.
+/// type is FILE|DIR|KEYRING
+/// residual is interpreted by type implementation
+pub fn resolve(ccache_name: Option<&str>) -> Result<Box<dyn CredentialCache>, KrbError> {
     let ccache_name = parse_ccache_name(ccache_name);
-    if ccache_name.starts_with("FILE:") {
-        return cc_file::destroy(ccache_name.as_str());
-    }
-
-    #[cfg(feature = "keyring")]
-    if ccache_name.starts_with("KEYRING:") {
-        return cc_keyring::destroy(ccache_name.as_str());
-    }
-
-    Err(KrbError::UnsupportedCredentialCacheType)
-}
-
-pub fn dump(ccache_name: Option<&str>) -> Result<(), KrbError> {
-    let ccache_name = parse_ccache_name(ccache_name);
+    trace!(?ccache_name, "Credential cache name");
 
     if ccache_name.starts_with("FILE:") {
-        return cc_file::dump(ccache_name.as_str());
+        return cc_file::resolve(ccache_name.as_str());
     }
 
     if ccache_name.starts_with("DIR:") {
-        return cc_dir::dump(ccache_name.as_str());
+        return cc_dir::resolve(ccache_name.as_str());
     }
 
-    Err(KrbError::UnsupportedCredentialCacheType)
+    if ccache_name.starts_with("KEYRING:") {
+        return cc_keyring::resolve(ccache_name.as_str());
+    }
+
+    debug!(?ccache_name, "Unsupported credential cache type");
+    Err(KrbError::BadCredentialCacheName)
 }
 
 #[cfg(test)]
@@ -521,14 +535,10 @@ mod tests {
             crate::client::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
 
         let path = "/tmp/krb5cc_krime";
-        let ccache_name = format!("FILE:{path}");
-        super::store(
-            &name,
-            &ticket,
-            &kdc_reply_part,
-            None,
-            Some(ccache_name.as_str()),
-        )?;
+        let ccname = format!("FILE:{path}");
+        let mut ccache = super::resolve(Some(ccname.as_str()))?;
+        ccache.init(&name, None)?;
+        ccache.store(&name, &ticket, &kdc_reply_part)?;
         assert!(std::fs::exists(path).expect("Unable to check if file exists"));
 
         // TODO load and compare
@@ -536,7 +546,7 @@ mod tests {
         // Test MIT can parse the created ccache
         let output = Command::new("klist")
             .arg("-c")
-            .arg(ccache_name.as_str())
+            .arg(ccname.as_str())
             .output()
             .expect("Unable to execute command klist");
         assert!(output.status.success());
@@ -544,7 +554,7 @@ mod tests {
         let output = String::from_utf8_lossy(output.stdout.as_slice()).to_string();
         assert!(output.contains("testuser@EXAMPLE.COM"));
 
-        super::destroy(Some(ccache_name.as_str()))?;
+        ccache.destroy()?;
         assert!(!std::fs::exists(path).expect("Unable to check if file exists"));
 
         Ok(())
@@ -560,13 +570,17 @@ mod tests {
         }
 
         let ccache_name = "KEYRING:session:abc";
+        let ccname = Some(ccache_name);
+        let mut ccache = super::resolve(ccname.as_deref())?;
+
         let (name, ticket, kdc_reply_part) =
             crate::client::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
-        super::store(&name, &ticket, &kdc_reply_part, None, Some(ccache_name))?;
+        ccache.init(&name, None)?;
+        ccache.store(&name, &ticket, &kdc_reply_part)?;
 
         let (name, ticket, kdc_reply_part) =
             crate::client::get_tgt("testuser2", "EXAMPLE.COM", "password").await?;
-        super::store(&name, &ticket, &kdc_reply_part, None, Some(ccache_name))?;
+        ccache.store(&name, &ticket, &kdc_reply_part)?;
 
         let output = Command::new("klist")
             .stderr(Stdio::null())
@@ -581,7 +595,7 @@ mod tests {
         assert!(output.contains("testuser@EXAMPLE.COM"));
         assert!(output.contains("testuser2@EXAMPLE.COM"));
 
-        super::destroy(Some(ccache_name))?;
+        ccache.destroy()?;
 
         let output = Command::new("klist")
             .stderr(Stdio::null())
@@ -596,6 +610,11 @@ mod tests {
         assert!(!output.contains("testuser@EXAMPLE.COM"));
         assert!(output.contains("testuser2@EXAMPLE.COM"));
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_ccache_api() -> Result<(), KrbError> {
         Ok(())
     }
 }

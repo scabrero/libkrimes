@@ -21,15 +21,23 @@ pub(crate) async fn acquire(opt: InitCredsOpt) {
             .expect("Failed to read password"),
     };
 
-    let clock_skew = None;
     let ccache_name = opt.ccache_name.as_deref();
+    let mut ccache = match libkrimes::ccache::resolve(ccache_name) {
+        Ok(ccache) => ccache,
+        Err(e) => {
+            error!(?e, "Failed to resolve");
+            return;
+        }
+    };
 
     match libkrimes::client::get_tgt(username, realm, &passphrase).await {
         Err(e) => error!(?e, "Failed to acquire initial credentials"),
         Ok((name, ticket, kdc_reply_part)) => {
-            if let Err(e) =
-                libkrimes::ccache::store(&name, &ticket, &kdc_reply_part, clock_skew, ccache_name)
-            {
+            if let Err(e) = ccache.init(&name, None) {
+                error!(?e, "Failed to initialize ccache");
+                return;
+            }
+            if let Err(e) = ccache.store(&name, &ticket, &kdc_reply_part) {
                 error!(?e, "Failed to store credentials in cache");
             }
         }

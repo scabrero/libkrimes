@@ -1,7 +1,8 @@
 use clap::{Parser, Subcommand};
-use opt::{CcacheDumpOpt, InitCredsOpt};
+use opt::{AcquireCredsOpt, CcacheDumpOpt, InitCredsOpt};
 
 mod ccache;
+mod getcreds;
 mod initcreds;
 mod opt;
 
@@ -15,6 +16,7 @@ struct Cli {
 #[derive(Debug, Clone, Subcommand)]
 enum KnifeCommands {
     Init(InitCredsOpt),
+    Acquire(AcquireCredsOpt),
     Ccache {
         #[clap(subcommand)]
         command: CcacheOpt,
@@ -36,6 +38,7 @@ async fn main() -> Result<(), ()> {
             CcacheOpt::Dump(opt) => ccache::dump(opt),
         },
         KnifeCommands::Init(opt) => initcreds::acquire(opt).await,
+        KnifeCommands::Acquire(opt) => getcreds::acquire(opt).await,
     }
     Ok(())
 }

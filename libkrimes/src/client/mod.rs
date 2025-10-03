@@ -132,3 +132,7 @@ pub async fn get_tgt_tcp(
         _ => unreachable!(),
     }
 }
+
+pub async fn get_credentials() -> Result<(), KrbError> {
+    Ok(())
+}

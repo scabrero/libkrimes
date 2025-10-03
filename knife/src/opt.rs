@@ -24,3 +24,14 @@ pub(crate) struct InitCredsOpt {
     pub(crate) password: Option<String>,
     pub(crate) principal: String,
 }
+
+#[derive(Debug, Clone, Args)]
+pub(crate) struct AcquireCredsOpt {
+    #[clap(short = 'c', long)]
+    pub(crate) ccache_name: Option<String>,
+    #[clap(short = 'f', long, action = clap::ArgAction::Set)]
+    pub(crate) forwardable: Option<bool>,
+    #[clap(short = 'S', long, default_value = "HOST")]
+    pub(crate) service: String,
+    pub(crate) hostname: String,
+}
