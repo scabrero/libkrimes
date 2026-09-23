@@ -12,7 +12,7 @@ pub(crate) fn dump(opt: CcacheDumpOpt) {
                 print!("Primary credential cache is {primary}\n\n");
             }
 
-            for cc in col.deref_mut() {
+            for cc in &mut col {
                 if let Ok(ccname) = cc.name() {
                     println!("Dumping credential cache {:?}", ccname);
                     if let Err(e) = cc.dump() {

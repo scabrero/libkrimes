@@ -73,6 +73,7 @@
 
 use super::CredentialCache;
 use super::CredentialCacheCollection;
+use crate::ccache::BoxedCredentialCacheCollection;
 use crate::ccache::{CredentialV4, PrincipalV4};
 use crate::error::KrbError;
 use crate::proto::{EncTicket, KdcReplyPart, KerberosCredentials, Name};
@@ -715,9 +716,7 @@ impl DerefMut for KeyringCredentialCacheCollection {
     }
 }
 
-pub(super) fn resolve_collection(
-    name: &str,
-) -> Result<Box<dyn CredentialCacheCollection<Target = Vec<Box<dyn CredentialCache>>>>, KrbError> {
+pub(super) fn resolve_collection(name: &str) -> Result<BoxedCredentialCacheCollection, KrbError> {
     trace!(?name, "Resolving collection");
 
     let residual = Residual::parse(name)?;

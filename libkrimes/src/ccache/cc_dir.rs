@@ -1,6 +1,7 @@
 use super::CredentialCache;
 use super::CredentialCacheCollection;
 use crate::ccache::cc_file::FileCredentialCacheContext;
+use crate::ccache::BoxedCredentialCacheCollection;
 use crate::error::KrbError;
 use std::fs::{DirBuilder, File, Permissions};
 use std::io::{Read, Write};
@@ -57,9 +58,7 @@ impl DerefMut for DirCredentialCacheCollection {
     }
 }
 
-pub(super) fn resolve_collection(
-    path: &str,
-) -> Result<Box<dyn CredentialCacheCollection<Target = Vec<Box<dyn CredentialCache>>>>, KrbError> {
+pub(super) fn resolve_collection(path: &str) -> Result<BoxedCredentialCacheCollection, KrbError> {
     let path = Path::new(path);
     trace!(?path, "Loading credential cache collection");
 

@@ -565,9 +565,36 @@ pub trait CredentialCacheCollection: Deref + DerefMut {
     fn primary(&mut self) -> Result<String, KrbError>;
 }
 
+pub type BoxedCredentialCacheCollection =
+    Box<dyn CredentialCacheCollection<Target = Vec<Box<dyn CredentialCache>>>>;
+
+impl<'a> IntoIterator for &'a BoxedCredentialCacheCollection {
+    type Item = &'a Box<dyn CredentialCache>;
+    type IntoIter = std::slice::Iter<'a, Box<dyn CredentialCache>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        // Deref: Box<dyn CredentialCacheCollection> ->
+        //        dyn CredentialCacheCollection ->
+        //        Vec<Box<dyn CredentialCache>>
+        (**self).iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut BoxedCredentialCacheCollection {
+    type Item = &'a mut Box<dyn CredentialCache>;
+    type IntoIter = std::slice::IterMut<'a, Box<dyn CredentialCache>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        // Deref: Box<dyn CredentialCacheCollection> ->
+        //        dyn CredentialCacheCollection ->
+        //        Vec<Box<dyn CredentialCache>>
+        (**self).iter_mut()
+    }
+}
+
 pub fn resolve_collection(
     ccache_name: Option<&str>,
-) -> Result<Box<dyn CredentialCacheCollection<Target = Vec<Box<dyn CredentialCache>>>>, KrbError> {
+) -> Result<BoxedCredentialCacheCollection, KrbError> {
     let ccache_name = parse_ccache_name(ccache_name)?;
     trace!(?ccache_name, "Resolving collection");
 
