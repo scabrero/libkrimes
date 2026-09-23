@@ -57,10 +57,10 @@ impl DerefMut for DirCredentialCacheCollection {
     }
 }
 
-pub(super) fn resolve_collection<P: AsRef<Path>>(
-    path: P,
+pub(super) fn resolve_collection(
+    path: &str,
 ) -> Result<Box<dyn CredentialCacheCollection<Target = Vec<Box<dyn CredentialCache>>>>, KrbError> {
-    let path = path.as_ref();
+    let path = Path::new(path);
     trace!(?path, "Loading credential cache collection");
 
     let mut col = DirCredentialCacheCollection {

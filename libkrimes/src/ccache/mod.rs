@@ -23,7 +23,6 @@ use std::env;
 use std::fmt;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::path::Path;
 use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -574,7 +573,6 @@ pub fn resolve_collection(
 
     if ccache_name.starts_with("DIR:") {
         let path = ccache_name.strip_prefix("DIR:").unwrap_or(&ccache_name);
-        let path = Path::new(path);
         return cc_dir::resolve_collection(path);
     }
 
