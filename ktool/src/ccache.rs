@@ -1,31 +1,29 @@
 use crate::opt::CcacheDumpOpt;
+use libkrimes::ccache::ResolvedCredentialCache;
 
 pub(crate) fn dump(opt: CcacheDumpOpt) {
-    if opt.all {
-        if let Ok(mut col) = libkrimes::ccache::resolve_collection(opt.common.name.as_deref()) {
+    let ccache = libkrimes::ccache::resolve(opt.common.name.as_deref()).unwrap();
+    match ccache {
+        ResolvedCredentialCache::Collection(cccol) => {
             print!(
                 "Collection contains {} credential caches\n\n",
-                col.iter().count()
+                cccol.iter().count()
             );
 
-            if let Ok(primary) = col.primary() {
-                print!("Primary credential cache is {primary}\n\n");
-            }
-
-            for cc in &mut col {
-                if let Ok(ccname) = cc.name() {
-                    println!("Dumping credential cache {:?}", ccname);
-                    if let Err(e) = cc.dump() {
-                        println!("Failed to dump credential cache: {e:?}");
-                    }
-                    println!();
+            if let Ok(primary) = cccol.primary() {
+                match primary.name() {
+                    Ok(name) => print!("Primary credential cache is {name}\n\n"),
+                    Err(e) => print!("Failed to read primary subsidiary name: {:?}", e),
                 }
             }
+
+            for cc in cccol.iter() {
+                print!("{:?}", cc.dump());
+            }
         }
-    } else if let Ok(mut ccache) = libkrimes::ccache::resolve(opt.common.name.as_deref()) {
-        if let Ok(ccname) = ccache.name() {
-            println!("Dumping credential cache {:?}", ccname);
-            if let Err(e) = ccache.dump() {
+        ResolvedCredentialCache::Subsidiary(cc) => {
+            println!("Dumping credential cache {:?}", cc.name());
+            if let Err(e) = cc.dump() {
                 println!("Error: {e:?}");
             }
         }

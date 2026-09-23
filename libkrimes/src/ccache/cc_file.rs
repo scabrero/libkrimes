@@ -1,5 +1,5 @@
 use super::CredentialCache;
-use crate::ccache::{Credential, CredentialV4, Principal, PrincipalV4};
+use crate::ccache::{Credential, CredentialV4, Principal, PrincipalV4, ResolvedCredentialCache};
 use crate::error::KrbError;
 use crate::proto::{KerberosCredentials, Name};
 use binrw::helpers::until_eof;
@@ -142,7 +142,7 @@ pub(super) struct FileCredentialCacheContext {
 }
 
 impl CredentialCache for FileCredentialCacheContext {
-    fn name(&mut self) -> Result<String, KrbError> {
+    fn name(&self) -> Result<String, KrbError> {
         Ok(self.path.to_string_lossy().to_string())
     }
 
@@ -273,7 +273,7 @@ impl CredentialCache for FileCredentialCacheContext {
         Ok(())
     }
 
-    fn dump(&mut self) -> Result<(), KrbError> {
+    fn dump(&self) -> Result<(), KrbError> {
         let ccache = FileCredentialCache::load(&self.path)?;
 
         println!("{ccache}");
@@ -281,7 +281,7 @@ impl CredentialCache for FileCredentialCacheContext {
         Ok(())
     }
 
-    fn principal(&mut self) -> Result<Name, KrbError> {
+    fn principal(&self) -> Result<Name, KrbError> {
         let ccache = FileCredentialCache::load(&self.path)?;
         match &ccache {
             FileCredentialCache::V4(v4) => match &v4.principal {
@@ -291,7 +291,7 @@ impl CredentialCache for FileCredentialCacheContext {
     }
 }
 
-pub(super) fn resolve(ccache_name: &str) -> Result<Box<dyn CredentialCache>, KrbError> {
+pub(super) fn resolve(ccache_name: &str) -> Result<ResolvedCredentialCache, KrbError> {
     trace!(?ccache_name, "Resolving file credential cache");
     let path = ccache_name.strip_prefix("FILE:").unwrap_or(ccache_name);
     trace!(?path, "Resolved file credential cache");
@@ -299,7 +299,8 @@ pub(super) fn resolve(ccache_name: &str) -> Result<Box<dyn CredentialCache>, Krb
     let path = PathBuf::from(&path);
 
     let fcc = FileCredentialCacheContext { path };
-    Ok(Box::new(fcc))
+    let fcc = Box::new(fcc);
+    Ok(ResolvedCredentialCache::Subsidiary(fcc))
 }
 
 #[cfg(test)]

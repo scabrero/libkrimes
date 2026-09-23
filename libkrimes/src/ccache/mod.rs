@@ -21,8 +21,7 @@ use der::asn1::OctetString;
 use der::Encode;
 use std::env;
 use std::fmt;
-use std::ops::Deref;
-use std::ops::DerefMut;
+use std::ops::{Deref, DerefMut};
 use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -532,15 +531,28 @@ fn parse_ccache_name(ccache: Option<&str>) -> Result<String, KrbError> {
 }
 
 pub trait CredentialCache {
-    fn name(&mut self) -> Result<String, KrbError>;
+    fn name(&self) -> Result<String, KrbError>;
     fn init(&mut self, name: &Name, clock_skew: Option<Duration>) -> Result<(), KrbError>;
     fn destroy(&mut self) -> Result<(), KrbError>;
     fn store(&mut self, credentials: &KerberosCredentials) -> Result<(), KrbError>;
-    fn principal(&mut self) -> Result<Name, KrbError>;
-    fn dump(&mut self) -> Result<(), KrbError>;
+    fn principal(&self) -> Result<Name, KrbError>;
+    fn dump(&self) -> Result<(), KrbError>;
 }
 
-pub fn resolve(ccache_name: Option<&str>) -> Result<Box<dyn CredentialCache>, KrbError> {
+pub trait CredentialCacheCollection: Deref + DerefMut {
+    fn primary(&self) -> Result<Box<dyn CredentialCache>, KrbError>;
+    fn switch(&mut self, ccache: Box<dyn CredentialCache>) -> Result<(), KrbError>;
+}
+
+pub type BoxedCredentialCacheCollection =
+    Box<dyn CredentialCacheCollection<Target = Vec<Box<dyn CredentialCache>>>>;
+
+pub enum ResolvedCredentialCache {
+    Collection(BoxedCredentialCacheCollection),
+    Subsidiary(Box<dyn CredentialCache>),
+}
+
+pub fn resolve(ccache_name: Option<&str>) -> Result<ResolvedCredentialCache, KrbError> {
     let ccache_name = parse_ccache_name(ccache_name)?;
     trace!(?ccache_name, "Resolving credential cache");
 
@@ -560,13 +572,6 @@ pub fn resolve(ccache_name: Option<&str>) -> Result<Box<dyn CredentialCache>, Kr
     debug!(?ccache_name, "Unsupported credential cache type");
     Err(KrbError::UnsupportedCredentialCacheType)
 }
-
-pub trait CredentialCacheCollection: Deref + DerefMut {
-    fn primary(&mut self) -> Result<String, KrbError>;
-}
-
-pub type BoxedCredentialCacheCollection =
-    Box<dyn CredentialCacheCollection<Target = Vec<Box<dyn CredentialCache>>>>;
 
 impl<'a> IntoIterator for &'a BoxedCredentialCacheCollection {
     type Item = &'a Box<dyn CredentialCache>;
@@ -592,25 +597,25 @@ impl<'a> IntoIterator for &'a mut BoxedCredentialCacheCollection {
     }
 }
 
-pub fn resolve_collection(
-    ccache_name: Option<&str>,
-) -> Result<BoxedCredentialCacheCollection, KrbError> {
-    let ccache_name = parse_ccache_name(ccache_name)?;
-    trace!(?ccache_name, "Resolving collection");
-
-    if ccache_name.starts_with("DIR:") {
-        let path = ccache_name.strip_prefix("DIR:").unwrap_or(&ccache_name);
-        return cc_dir::resolve_collection(path);
-    }
-
-    #[cfg(feature = "keyring")]
-    if ccache_name.starts_with("KEYRING:") {
-        return cc_keyring::resolve_collection(ccache_name.as_str());
-    }
-
-    debug!(?ccache_name, "Unsupported credential cache type");
-    Err(KrbError::UnsupportedCredentialCacheType)
-}
+//pub fn resolve_collection(
+//    ccache_name: Option<&str>,
+//) -> Result<BoxedCredentialCacheCollection, KrbError> {
+//    let ccache_name = parse_ccache_name(ccache_name)?;
+//    trace!(?ccache_name, "Resolving collection");
+//
+//    if ccache_name.starts_with("DIR:") {
+//        let path = ccache_name.strip_prefix("DIR:").unwrap_or(&ccache_name);
+//        return cc_dir::resolve_collection(path);
+//    }
+//
+//    #[cfg(feature = "keyring")]
+//    if ccache_name.starts_with("KEYRING:") {
+//        return cc_keyring::resolve_collection(ccache_name.as_str());
+//    }
+//
+//    debug!(?ccache_name, "Unsupported credential cache type");
+//    Err(KrbError::UnsupportedCredentialCacheType)
+//}
 
 #[cfg(test)]
 mod tests {
