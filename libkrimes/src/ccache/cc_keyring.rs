@@ -301,17 +301,24 @@ fn get_or_create_keyring(parent: &mut Keyring, name: &str) -> Result<Keyring, Er
     .inspect_err(|e| error!(?parent, ?name, ?e, "Failed to get or create keyring"))
 }
 
-/// fetch or create a keyring for the given collection name within the anchor
-fn get_collection(residual: &Residual) -> Result<Keyring, KrbError> {
-    let mut parent = match residual.anchor.as_str() {
-        "process" => Keyring::attach_or_create(SpecialKeyring::Process)
-            .inspect_err(|e| error!(?e, "Failed to attach or create process keyring")),
-        "thread" => Keyring::attach_or_create(SpecialKeyring::Thread)
-            .inspect_err(|e| error!(?e, "Failed to attach or create thread keyring")),
-        "session" => Keyring::attach_or_create(SpecialKeyring::Session)
-            .inspect_err(|e| error!(?e, "Failed to attach or create session keyring")),
-        "user" => Keyring::attach_or_create(SpecialKeyring::User)
-            .inspect_err(|e| error!(?e, "Failed to attach or create user keyring")),
+fn get_anchor(residual: &Residual) -> Result<Keyring, KrbError> {
+    match residual.anchor.as_str() {
+        "process" => Keyring::attach_or_create(SpecialKeyring::Process).map_err(|e| {
+            error!(?e, "Failed to attach or create process keyring");
+            e.into()
+        }),
+        "thread" => Keyring::attach_or_create(SpecialKeyring::Thread).map_err(|e| {
+            error!(?e, "Failed to attach or create thread keyring");
+            e.into()
+        }),
+        "session" => Keyring::attach_or_create(SpecialKeyring::Session).map_err(|e| {
+            error!(?e, "Failed to attach or create session keyring");
+            e.into()
+        }),
+        "user" => Keyring::attach_or_create(SpecialKeyring::User).map_err(|e| {
+            error!(?e, "Failed to attach or create user keyring");
+            e.into()
+        }),
         "persistent" => {
             let uid = match residual.collection.parse::<u32>() {
                 Ok(uid) => uid,
@@ -338,14 +345,18 @@ fn get_collection(residual: &Residual) -> Result<Keyring, KrbError> {
             let parent = unsafe { Keyring::new(parent) };
             Ok(parent)
         }
-        _ => Err(Errno(libc::ENOTSUP)),
-    }?;
+        _ => Err(Errno(libc::ENOTSUP).into()),
+    }
+}
 
+/// fetch or create a keyring for the given collection name within the anchor
+fn get_collection(residual: &Residual) -> Result<Keyring, KrbError> {
     let collection_name = match residual.anchor.as_str() {
         "persistent" => "_krb".to_string(),
         _ => format!("_krb_{}", residual.collection),
     };
 
+    let mut parent = get_anchor(residual)?;
     get_or_create_keyring(&mut parent, &collection_name).map_err(|e| e.into())
 }
 
@@ -583,6 +594,21 @@ impl CredentialCacheCollection for KeyringCredentialCacheCollection {
             subsidiaries.push(Box::new(cc));
         }
         Ok(subsidiaries)
+    }
+
+    fn destroy(&mut self) -> Result<(), KrbError> {
+        for mut cc in self.subsidiaries()? {
+            cc.destroy()
+                .inspect_err(|x| error!("Failed to destroy subsidiary: {:?}", x))
+                .ok();
+        }
+
+        let mut anchor = get_anchor(&self.residual)?;
+        let collection = get_collection(&self.residual)?;
+        anchor
+            .unlink_keyring(&collection)
+            .inspect_err(|e| error!(?e, "Failed to unlink collection from anchor"))?;
+        Ok(())
     }
 }
 
