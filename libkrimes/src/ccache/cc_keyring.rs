@@ -365,8 +365,12 @@ pub(super) struct KeyringCredentialCacheContext {
 }
 
 impl CredentialCache for KeyringCredentialCacheContext {
-    fn name(&self) -> Result<String, KrbError> {
-        Ok(self.residual.to_string())
+    fn cc_type(&self) -> String {
+        "KEYRING".to_string()
+    }
+
+    fn name(&self) -> String {
+        self.residual.to_string()
     }
 
     fn init(&mut self, name: &Name, clock_skew: Option<Duration>) -> Result<(), KrbError> {
@@ -496,6 +500,14 @@ impl KeyringCredentialCacheCollection {
 }
 
 impl CredentialCacheCollection for KeyringCredentialCacheCollection {
+    fn cc_type(&self) -> String {
+        "KEYRING".to_string()
+    }
+
+    fn name(&self) -> String {
+        return self.residual.to_string();
+    }
+
     fn primary(&self) -> Result<Box<dyn CredentialCache>, KrbError> {
         let mut collection = get_collection(&self.residual)?;
 

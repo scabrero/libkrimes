@@ -74,6 +74,14 @@ impl DirCredentialCacheCollection {
 }
 
 impl CredentialCacheCollection for DirCredentialCacheCollection {
+    fn cc_type(&self) -> String {
+        "DIR".to_string()
+    }
+
+    fn name(&self) -> String {
+        self.collection_path.to_string_lossy().to_string()
+    }
+
     fn primary(&self) -> Result<Box<dyn CredentialCache>, KrbError> {
         let primary = self.collection_path.join("primary");
         match std::fs::exists(&primary) {
@@ -129,7 +137,7 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
     }
 
     fn switch(&mut self, ccache: Box<dyn CredentialCache>) -> Result<(), KrbError> {
-        let primary_path = ccache.name()?;
+        let primary_path = ccache.name();
         let primary_path = PathBuf::from(primary_path);
         let primary_name = primary_path
             .file_name()
