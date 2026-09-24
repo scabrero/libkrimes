@@ -560,7 +560,7 @@ impl CredentialCacheCollection for KeyringCredentialCacheCollection {
     fn switch(&mut self, ccache: &Box<dyn CredentialCache>) -> Result<(), KrbError> {
         let mut collection = get_collection(&self.residual)?;
         let new_primary_name = ccache
-            .name()
+            .full_name()
             .and_then(|x| Residual::parse(&x))
             .map(|x| x.subsidiary)?
             .ok_or(KrbError::CredentialCacheNotFound)?;
