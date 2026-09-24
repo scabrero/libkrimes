@@ -138,20 +138,20 @@ impl fmt::Display for FileCredentialCache {
 }
 
 pub(super) struct FileCredentialCacheContext {
-    pub cccol_residual: Option<String>,
+    pub cccol_path: Option<PathBuf>,
     pub path: PathBuf,
 }
 
 impl CredentialCache for FileCredentialCacheContext {
     fn cc_type(&self) -> String {
-        match &self.cccol_residual {
+        match &self.cccol_path {
             Some(_) => "DIR".to_string(),
             None => "FILE".to_string(),
         }
     }
 
     fn name(&self) -> Result<String, KrbError> {
-        let name = match &self.cccol_residual {
+        let name = match &self.cccol_path {
             Some(cccol) => {
                 // This is a subsidiary cache in a DIR collection
                 let file = self
@@ -159,7 +159,7 @@ impl CredentialCache for FileCredentialCacheContext {
                     .file_name()
                     .map(|x| x.to_string_lossy().to_string())
                     .ok_or(KrbError::CredentialCacheNotFound)?;
-                format!(":{}/{}", cccol, file)
+                format!(":{}/{}", cccol.to_string_lossy(), file)
             }
             None => self.path.to_string_lossy().to_string(),
         };
@@ -319,7 +319,7 @@ pub(super) fn resolve(ccache_name: &str) -> Result<ResolvedCredentialCache, KrbE
     let path = PathBuf::from(&path);
 
     let fcc = FileCredentialCacheContext {
-        cccol_residual: None,
+        cccol_path: None,
         path,
     };
     let fcc = Box::new(fcc);

@@ -62,15 +62,13 @@ pub(super) struct DirCredentialCacheCollection {
     collection_path: PathBuf,
 }
 
-impl DirCredentialCacheCollection {
-    fn gen_random_subsidiary_name(&self) -> String {
-        let s: String = rand::rng()
-            .sample_iter(&Alphanumeric)
-            .take(6)
-            .map(char::from)
-            .collect();
-        format!("krb{s}")
-    }
+fn gen_random_subsidiary_name() -> String {
+    let s: String = rand::rng()
+        .sample_iter(&Alphanumeric)
+        .take(6)
+        .map(char::from)
+        .collect();
+    format!("krb{s}")
 }
 
 impl CredentialCacheCollection for DirCredentialCacheCollection {
@@ -79,12 +77,7 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
     }
 
     fn name(&self) -> Result<String, KrbError> {
-        let primary = self.primary()?;
-        Ok(format!(
-            ":{}/{}",
-            self.collection_path.to_string_lossy(),
-            primary.name()?
-        ))
+        self.primary()?.name()
     }
 
     fn primary(&self) -> Result<Box<dyn CredentialCache>, KrbError> {
@@ -102,7 +95,7 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
                 })?;
                 let primary_path = self.collection_path.join(buffer.trim());
                 let fcc = FileCredentialCacheContext {
-                    cccol_residual: Some(format!(":{}", self.collection_path.to_string_lossy())),
+                    cccol_path: Some(self.collection_path.clone()),
                     path: primary_path,
                 };
                 Ok(Box::new(fcc))
@@ -111,7 +104,7 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
                 let primary_name = "tkt".to_string();
                 store_primary_subsidiary_name(&primary_name, self.collection_path.as_path())?;
                 let fcc = FileCredentialCacheContext {
-                    cccol_residual: Some(format!(":{}", self.collection_path.to_string_lossy())),
+                    cccol_path: Some(self.collection_path.clone()),
                     path: self.collection_path.join(primary_name),
                 };
                 Ok(Box::new(fcc))
@@ -125,7 +118,7 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
 
     fn new_unique(&self) -> Result<Box<dyn CredentialCache>, KrbError> {
         for _ in 1..10 {
-            let new_name = self.gen_random_subsidiary_name();
+            let new_name = gen_random_subsidiary_name();
             let path = self.collection_path.join(new_name);
             match std::fs::exists(&path) {
                 Ok(true) => {
@@ -133,10 +126,7 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
                 }
                 Ok(false) => {
                     let cc = FileCredentialCacheContext {
-                        cccol_residual: Some(format!(
-                            ":{}",
-                            self.collection_path.to_string_lossy()
-                        )),
+                        cccol_path: Some(self.collection_path.clone()),
                         path,
                     };
                     return Ok(Box::new(cc));
@@ -188,7 +178,7 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
             .filter(|a| a.1.is_file() && a.0.file_name() != "primary")
         {
             let fcc = FileCredentialCacheContext {
-                cccol_residual: Some(format!(":{}", self.collection_path.to_string_lossy())),
+                cccol_path: Some(self.collection_path.clone()),
                 path: entry.0.into_path(),
             };
             subsidiaries.push(Box::new(fcc));
@@ -218,7 +208,7 @@ pub(super) fn resolve(ccache_name: &str) -> Result<ResolvedCredentialCache, KrbE
         create_ccache_dir(&collection_path)?;
 
         let fcc = FileCredentialCacheContext {
-            cccol_residual: Some(ccache_name.to_owned()),
+            cccol_path: Some(collection_path),
             path,
         };
         let fcc = Box::new(fcc);
