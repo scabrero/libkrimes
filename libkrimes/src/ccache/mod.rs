@@ -540,6 +540,7 @@ pub trait CredentialCache {
 
 pub trait CredentialCacheCollection {
     fn primary(&self) -> Result<Box<dyn CredentialCache>, KrbError>;
+    fn new_unique(&self) -> Result<Box<dyn CredentialCache>, KrbError>;
     fn switch(&mut self, ccache: Box<dyn CredentialCache>) -> Result<(), KrbError>;
     fn subsidiaries(&self) -> Result<Vec<Box<dyn CredentialCache>>, KrbError>;
     fn try_iter(&self) -> Result<std::vec::IntoIter<Box<dyn CredentialCache>>, KrbError> {

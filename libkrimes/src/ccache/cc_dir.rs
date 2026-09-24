@@ -2,12 +2,13 @@ use super::CredentialCache;
 use crate::ccache::cc_file::FileCredentialCacheContext;
 use crate::ccache::{CredentialCacheCollection, ResolvedCredentialCache};
 use crate::error::KrbError;
+use rand::{distr::Alphanumeric, Rng};
 use std::fs::{DirBuilder, File, Permissions};
 use std::io::{Read, Write};
 use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use tracing::{error, trace};
+use tracing::{debug, error, trace};
 use walkdir::WalkDir;
 
 fn create_ccache_dir(ccache_dir: &PathBuf) -> Result<(), KrbError> {
@@ -61,6 +62,17 @@ pub(super) struct DirCredentialCacheCollection {
     collection_path: PathBuf,
 }
 
+impl DirCredentialCacheCollection {
+    fn gen_random_subsidiary_name(&self) -> String {
+        let s: String = rand::rng()
+            .sample_iter(&Alphanumeric)
+            .take(6)
+            .map(char::from)
+            .collect();
+        format!("krb{s}")
+    }
+}
+
 impl CredentialCacheCollection for DirCredentialCacheCollection {
     fn primary(&self) -> Result<Box<dyn CredentialCache>, KrbError> {
         let primary = self.collection_path.join("primary");
@@ -92,6 +104,28 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
                 Err(KrbError::IoError)
             }
         }
+    }
+
+    fn new_unique(&self) -> Result<Box<dyn CredentialCache>, KrbError> {
+        for _ in 1..10 {
+            let new_name = self.gen_random_subsidiary_name();
+            let path = self.collection_path.join(new_name);
+            match std::fs::exists(&path) {
+                Ok(true) => {
+                    continue;
+                }
+                Ok(false) => {
+                    let cc = FileCredentialCacheContext { path };
+                    return Ok(Box::new(cc));
+                }
+                Err(e) => {
+                    debug!("Failed to check if path {:?} exists: {:?}", path, e);
+                    return Err(KrbError::IoError);
+                }
+            }
+        }
+        error!("Failed to generate a random subsidiary name");
+        Err(KrbError::CredentialCacheError)
     }
 
     fn switch(&mut self, ccache: Box<dyn CredentialCache>) -> Result<(), KrbError> {

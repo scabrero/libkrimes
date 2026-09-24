@@ -84,7 +84,7 @@ use errno::Errno;
 use keyutils::keytypes::user::User;
 use keyutils::{Keyring, SpecialKeyring};
 use keyutils_raw::{keyctl_get_keyring_id, keyctl_get_persistent};
-//use rand::{distr::Alphanumeric, Rng};
+use rand::{distr::Alphanumeric, Rng};
 use std::fmt::Display;
 use std::time::Duration;
 use tracing::{debug, error, trace};
@@ -214,34 +214,6 @@ fn get_subsidiary_principal(keyring: &Keyring) -> Result<Option<Name>, KrbError>
         Err(e) => Err(KrbError::from(e)),
     }
 }
-
-/// Checks if a subsidiary name exists within collection.
-//fn subsidiary_exists(collection: &Keyring, name: &str) -> Result<Option<Keyring>, KrbError> {
-//    match collection.search_for_keyring(name, None) {
-//        Ok(k) => Ok(Some(k)),
-//        Err(errno::Errno(libc::ENOKEY)) => Ok(None),
-//        Err(e) => Err(KrbError::from(e)),
-//    }
-//}
-
-/// Generates a valid random subsidiary name.
-//fn get_random_subsidiary_name(collection: &mut Keyring) -> Result<String, KrbError> {
-//    for _ in 1..10 {
-//        let s: String = rand::rng()
-//            .sample_iter(&Alphanumeric)
-//            .take(7)
-//            .map(char::from)
-//            .collect();
-//        let s = format!("_krb_{s}");
-//        let k = subsidiary_exists(collection, s.as_str())?;
-//        if k.is_none() {
-//            return Ok(s);
-//        }
-//    }
-//
-//    error!(collection=?collection, "Failed to generate random cache name");
-//    Err(KrbError::CredentialCacheError)
-//}
 
 // OK
 fn get_primary_subsidiary_name(collection: &mut Keyring) -> Result<Option<String>, KrbError> {
@@ -493,6 +465,36 @@ struct KeyringCredentialCacheCollection {
     pub residual: Residual,
 }
 
+impl KeyringCredentialCacheCollection {
+    fn subsidiary_exists(&self, name: &str) -> Result<Option<Keyring>, KrbError> {
+        let collection = get_collection(&self.residual)?;
+        match collection.search_for_keyring(name, None) {
+            Ok(k) => Ok(Some(k)),
+            Err(errno::Errno(libc::ENOKEY)) => Ok(None),
+            Err(e) => Err(KrbError::from(e)),
+        }
+    }
+
+    fn gen_random_subsidiary_name(&self) -> Result<String, KrbError> {
+        let collection = get_collection(&self.residual)?;
+        for _ in 1..10 {
+            let s: String = rand::rng()
+                .sample_iter(&Alphanumeric)
+                .take(7)
+                .map(char::from)
+                .collect();
+            let s = format!("_krb_{s}");
+            let k = self.subsidiary_exists(s.as_str())?;
+            if k.is_none() {
+                return Ok(s);
+            }
+        }
+
+        error!(?collection, "Failed to generate random cache name");
+        Err(KrbError::CredentialCacheError)
+    }
+}
+
 impl CredentialCacheCollection for KeyringCredentialCacheCollection {
     fn primary(&self) -> Result<Box<dyn CredentialCache>, KrbError> {
         let mut collection = get_collection(&self.residual)?;
@@ -518,6 +520,17 @@ impl CredentialCacheCollection for KeyringCredentialCacheCollection {
             }
         };
 
+        Ok(Box::new(cc))
+    }
+
+    fn new_unique(&self) -> Result<Box<dyn CredentialCache>, KrbError> {
+        let name = self.gen_random_subsidiary_name()?;
+        let residual = Residual {
+            anchor: self.residual.anchor.clone(),
+            collection: self.residual.collection.clone(),
+            subsidiary: Some(name),
+        };
+        let cc = KeyringCredentialCacheContext { residual };
         Ok(Box::new(cc))
     }
 
