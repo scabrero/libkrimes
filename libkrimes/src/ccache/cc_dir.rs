@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 use std::ops::{Deref, DerefMut};
 use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::{error, trace};
 use walkdir::WalkDir;
 
@@ -38,7 +38,7 @@ fn create_ccache_dir(ccache_dir: &PathBuf) -> Result<(), KrbError> {
 
 fn store_primary_subsidiary_name(
     subsidiary_name: &str,
-    collection_path: &PathBuf,
+    collection_path: &Path,
 ) -> Result<(), KrbError> {
     let primary_path = collection_path.join("primary");
     let mut f = File::create(&primary_path).map_err(|e| {
@@ -61,6 +61,7 @@ fn store_primary_subsidiary_name(
 pub(super) struct DirCredentialCacheCollection {
     collection_path: PathBuf,
     subsidiaries: Vec<Box<dyn CredentialCache>>,
+    // TODO Drop subsidiaries
 }
 
 impl Deref for DirCredentialCacheCollection {
@@ -96,10 +97,11 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
             }
             Ok(false) => {
                 let primary_name = "tkt".to_string();
-                store_primary_subsidiary_name(&primary_name, &self.collection_path)?;
+                store_primary_subsidiary_name(&primary_name, self.collection_path.as_path())?;
                 let fcc = FileCredentialCacheContext {
                     path: self.collection_path.join(primary_name),
                 };
+                // TODO Append to self.subsidiaries?
                 Ok(Box::new(fcc))
             }
             Err(e) => {
@@ -115,7 +117,10 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
         let primary_name = primary_path
             .file_name()
             .ok_or(KrbError::CredentialCacheNotFound)?;
-        store_primary_subsidiary_name(&primary_name.to_string_lossy(), &self.collection_path)?;
+        store_primary_subsidiary_name(
+            &primary_name.to_string_lossy(),
+            self.collection_path.as_path(),
+        )?;
         Ok(())
     }
 }

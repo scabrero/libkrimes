@@ -597,26 +597,6 @@ impl<'a> IntoIterator for &'a mut BoxedCredentialCacheCollection {
     }
 }
 
-//pub fn resolve_collection(
-//    ccache_name: Option<&str>,
-//) -> Result<BoxedCredentialCacheCollection, KrbError> {
-//    let ccache_name = parse_ccache_name(ccache_name)?;
-//    trace!(?ccache_name, "Resolving collection");
-//
-//    if ccache_name.starts_with("DIR:") {
-//        let path = ccache_name.strip_prefix("DIR:").unwrap_or(&ccache_name);
-//        return cc_dir::resolve_collection(path);
-//    }
-//
-//    #[cfg(feature = "keyring")]
-//    if ccache_name.starts_with("KEYRING:") {
-//        return cc_keyring::resolve_collection(ccache_name.as_str());
-//    }
-//
-//    debug!(?ccache_name, "Unsupported credential cache type");
-//    Err(KrbError::UnsupportedCredentialCacheType)
-//}
-
 #[cfg(test)]
 mod tests {
     use tracing::warn;
@@ -639,7 +619,10 @@ mod tests {
 
         let path = "/tmp/krb5cc_krime";
         let ccache_name = format!("FILE:{path}");
-        let mut ccache = super::resolve(Some(ccache_name.as_str()))?;
+        let mut ccache = match super::resolve(Some(ccache_name.as_str()))? {
+            ResolvedCredentialCache::Subsidiary(ccache) => ccache,
+            _ => panic!("Unexpected"),
+        };
         ccache.init(&creds.name, None)?;
         ccache.store(&creds)?;
         assert!(std::fs::exists(path).expect("Unable to check if file exists"));
@@ -675,12 +658,18 @@ mod tests {
         let ccache_name = "KEYRING:session:abc";
         let ccname = Some(ccache_name);
 
-        let mut ccache = super::resolve(ccname)?;
+        let mut ccache = match super::resolve(ccname)? {
+            ResolvedCredentialCache::Subsidiary(ccache) => ccache,
+            _ => panic!("Unexpected"),
+        };
         let creds = crate::proto::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
         ccache.init(&creds.name, None)?;
         ccache.store(&creds)?;
 
-        let mut ccache = super::resolve(ccname)?;
+        let mut ccache = match super::resolve(ccname)? {
+            ResolvedCredentialCache::Subsidiary(ccache) => ccache,
+            _ => panic!("Unexpected"),
+        };
         let creds = crate::proto::get_tgt("testuser2", "EXAMPLE.COM", "password").await?;
         ccache.init(&creds.name, None)?;
         ccache.store(&creds)?;
