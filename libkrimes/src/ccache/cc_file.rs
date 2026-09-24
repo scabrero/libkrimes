@@ -138,16 +138,32 @@ impl fmt::Display for FileCredentialCache {
 }
 
 pub(super) struct FileCredentialCacheContext {
+    pub cccol_residual: Option<String>,
     pub path: PathBuf,
 }
 
 impl CredentialCache for FileCredentialCacheContext {
     fn cc_type(&self) -> String {
-        "FILE".to_string()
+        match &self.cccol_residual {
+            Some(_) => "DIR".to_string(),
+            None => "FILE".to_string(),
+        }
     }
 
-    fn name(&self) -> String {
-        self.path.to_string_lossy().to_string()
+    fn name(&self) -> Result<String, KrbError> {
+        let name = match &self.cccol_residual {
+            Some(cccol) => {
+                // This is a subsidiary cache in a DIR collection
+                let file = self
+                    .path
+                    .file_name()
+                    .map(|x| x.to_string_lossy().to_string())
+                    .ok_or(KrbError::CredentialCacheNotFound)?;
+                format!(":{}/{}", cccol, file)
+            }
+            None => self.path.to_string_lossy().to_string(),
+        };
+        Ok(name)
     }
 
     fn init(&mut self, name: &Name, clock_skew: Option<Duration>) -> Result<(), KrbError> {
@@ -302,7 +318,10 @@ pub(super) fn resolve(ccache_name: &str) -> Result<ResolvedCredentialCache, KrbE
 
     let path = PathBuf::from(&path);
 
-    let fcc = FileCredentialCacheContext { path };
+    let fcc = FileCredentialCacheContext {
+        cccol_residual: None,
+        path,
+    };
     let fcc = Box::new(fcc);
     Ok(ResolvedCredentialCache::Subsidiary(fcc))
 }
@@ -312,6 +331,7 @@ mod tests {
     use super::*;
     use binrw::BinWrite;
 
+    // Test name with and without cccol
     #[tokio::test]
     async fn test_ccache_file_read_write() -> Result<(), KrbError> {
         /*

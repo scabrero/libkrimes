@@ -369,8 +369,8 @@ impl CredentialCache for KeyringCredentialCacheContext {
         "KEYRING".to_string()
     }
 
-    fn name(&self) -> String {
-        self.residual.to_string()
+    fn name(&self) -> Result<String, KrbError> {
+        Ok(self.residual.to_string())
     }
 
     fn init(&mut self, name: &Name, clock_skew: Option<Duration>) -> Result<(), KrbError> {
@@ -504,8 +504,8 @@ impl CredentialCacheCollection for KeyringCredentialCacheCollection {
         "KEYRING".to_string()
     }
 
-    fn name(&self) -> String {
-        return self.residual.to_string();
+    fn name(&self) -> Result<String, KrbError> {
+        self.primary()?.name()
     }
 
     fn primary(&self) -> Result<Box<dyn CredentialCache>, KrbError> {

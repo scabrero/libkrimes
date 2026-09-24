@@ -78,8 +78,13 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
         "DIR".to_string()
     }
 
-    fn name(&self) -> String {
-        self.collection_path.to_string_lossy().to_string()
+    fn name(&self) -> Result<String, KrbError> {
+        let primary = self.primary()?;
+        Ok(format!(
+            ":{}/{}",
+            self.collection_path.to_string_lossy(),
+            primary.name()?
+        ))
     }
 
     fn primary(&self) -> Result<Box<dyn CredentialCache>, KrbError> {
@@ -96,13 +101,17 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
                     KrbError::IoError
                 })?;
                 let primary_path = self.collection_path.join(buffer.trim());
-                let fcc = FileCredentialCacheContext { path: primary_path };
+                let fcc = FileCredentialCacheContext {
+                    cccol_residual: Some(format!(":{}", self.collection_path.to_string_lossy())),
+                    path: primary_path,
+                };
                 Ok(Box::new(fcc))
             }
             Ok(false) => {
                 let primary_name = "tkt".to_string();
                 store_primary_subsidiary_name(&primary_name, self.collection_path.as_path())?;
                 let fcc = FileCredentialCacheContext {
+                    cccol_residual: Some(format!(":{}", self.collection_path.to_string_lossy())),
                     path: self.collection_path.join(primary_name),
                 };
                 Ok(Box::new(fcc))
@@ -123,7 +132,13 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
                     continue;
                 }
                 Ok(false) => {
-                    let cc = FileCredentialCacheContext { path };
+                    let cc = FileCredentialCacheContext {
+                        cccol_residual: Some(format!(
+                            ":{}",
+                            self.collection_path.to_string_lossy()
+                        )),
+                        path,
+                    };
                     return Ok(Box::new(cc));
                 }
                 Err(e) => {
@@ -137,7 +152,7 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
     }
 
     fn switch(&mut self, ccache: Box<dyn CredentialCache>) -> Result<(), KrbError> {
-        let primary_path = ccache.name();
+        let primary_path = ccache.name()?;
         let primary_path = PathBuf::from(primary_path);
         let primary_name = primary_path
             .file_name()
@@ -173,6 +188,7 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
             .filter(|a| a.1.is_file() && a.0.file_name() != "primary")
         {
             let fcc = FileCredentialCacheContext {
+                cccol_residual: Some(format!(":{}", self.collection_path.to_string_lossy())),
                 path: entry.0.into_path(),
             };
             subsidiaries.push(Box::new(fcc));
@@ -190,10 +206,10 @@ pub(super) fn resolve(ccache_name: &str) -> Result<ResolvedCredentialCache, KrbE
 
     let resolved = if ccache_name.starts_with(":") {
         trace!(?ccache_name, "Collection with subsidiary");
-        let ccache_name = ccache_name
+        let path = ccache_name
             .strip_prefix(":")
             .ok_or(KrbError::CredentialCacheError)?;
-        let path = PathBuf::from(ccache_name);
+        let path = PathBuf::from(path);
 
         let collection_path = match path.parent() {
             Some(p) => Ok(PathBuf::from(p)),
@@ -201,7 +217,10 @@ pub(super) fn resolve(ccache_name: &str) -> Result<ResolvedCredentialCache, KrbE
         }?;
         create_ccache_dir(&collection_path)?;
 
-        let fcc = FileCredentialCacheContext { path };
+        let fcc = FileCredentialCacheContext {
+            cccol_residual: Some(ccache_name.to_owned()),
+            path,
+        };
         let fcc = Box::new(fcc);
         ResolvedCredentialCache::Subsidiary(fcc)
     } else {
@@ -215,4 +234,12 @@ pub(super) fn resolve(ccache_name: &str) -> Result<ResolvedCredentialCache, KrbE
     };
 
     Ok(resolved)
+}
+
+#[cfg(test)]
+mod tests {
+    // Test name:
+    //  collection.name() -> return the primary name, not bare directory
+    //  collection.item.name() -> must be DIR::/path_to_col/path_to_subsidiary
+    //  Test full names
 }
