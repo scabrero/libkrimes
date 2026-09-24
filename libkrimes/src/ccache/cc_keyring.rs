@@ -354,7 +354,7 @@ fn get_subsidiary(residual: &Residual) -> Result<Keyring, KrbError> {
     match &residual.subsidiary {
         Some(name) => {
             let mut collection = get_collection(residual)?;
-            get_or_create_keyring(&mut collection, &name).map_err(|e| e.into())
+            get_or_create_keyring(&mut collection, name).map_err(|e| e.into())
         }
         None => Err(KrbError::CredentialCacheNotFound),
     }

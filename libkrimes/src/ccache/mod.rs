@@ -616,9 +616,10 @@ mod tests {
 
         let path = "/tmp/krb5cc_krime";
         let ccache_name = format!("FILE:{path}");
-        let mut ccache = match super::resolve(Some(ccache_name.as_str()))? {
-            ResolvedCredentialCache::Subsidiary(ccache) => ccache,
-            _ => panic!("Unexpected"),
+        let ResolvedCredentialCache::Subsidiary(mut ccache) =
+            super::resolve(Some(ccache_name.as_str()))?
+        else {
+            panic!("Unexpected")
         };
         ccache.init(&creds.name, None)?;
         ccache.store(&creds)?;
@@ -655,17 +656,15 @@ mod tests {
         let ccache_name = "KEYRING:session:abc";
         let ccname = Some(ccache_name);
 
-        let mut ccache = match super::resolve(ccname)? {
-            ResolvedCredentialCache::Subsidiary(ccache) => ccache,
-            _ => panic!("Unexpected"),
+        let ResolvedCredentialCache::Subsidiary(mut ccache) = super::resolve(ccname)? else {
+            panic!("Unexpected")
         };
         let creds = crate::proto::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
         ccache.init(&creds.name, None)?;
         ccache.store(&creds)?;
 
-        let mut ccache = match super::resolve(ccname)? {
-            ResolvedCredentialCache::Subsidiary(ccache) => ccache,
-            _ => panic!("Unexpected"),
+        let ResolvedCredentialCache::Subsidiary(mut ccache) = super::resolve(ccname)? else {
+            panic!("Unexpected")
         };
         let creds = crate::proto::get_tgt("testuser2", "EXAMPLE.COM", "password").await?;
         ccache.init(&creds.name, None)?;
