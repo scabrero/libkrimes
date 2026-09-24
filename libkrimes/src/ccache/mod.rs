@@ -21,7 +21,6 @@ use der::asn1::OctetString;
 use der::Encode;
 use std::env;
 use std::fmt;
-use std::ops::{Deref, DerefMut};
 use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -539,16 +538,17 @@ pub trait CredentialCache {
     fn dump(&self) -> Result<(), KrbError>;
 }
 
-pub trait CredentialCacheCollection: Deref + DerefMut {
+pub trait CredentialCacheCollection {
     fn primary(&self) -> Result<Box<dyn CredentialCache>, KrbError>;
     fn switch(&mut self, ccache: Box<dyn CredentialCache>) -> Result<(), KrbError>;
+    fn subsidiaries(&self) -> Result<Vec<Box<dyn CredentialCache>>, KrbError>;
+    fn try_iter(&self) -> Result<std::vec::IntoIter<Box<dyn CredentialCache>>, KrbError> {
+        Ok(self.subsidiaries()?.into_iter())
+    }
 }
 
-pub type BoxedCredentialCacheCollection =
-    Box<dyn CredentialCacheCollection<Target = Vec<Box<dyn CredentialCache>>>>;
-
 pub enum ResolvedCredentialCache {
-    Collection(BoxedCredentialCacheCollection),
+    Collection(Box<dyn CredentialCacheCollection>),
     Subsidiary(Box<dyn CredentialCache>),
 }
 
@@ -571,30 +571,6 @@ pub fn resolve(ccache_name: Option<&str>) -> Result<ResolvedCredentialCache, Krb
 
     debug!(?ccache_name, "Unsupported credential cache type");
     Err(KrbError::UnsupportedCredentialCacheType)
-}
-
-impl<'a> IntoIterator for &'a BoxedCredentialCacheCollection {
-    type Item = &'a Box<dyn CredentialCache>;
-    type IntoIter = std::slice::Iter<'a, Box<dyn CredentialCache>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        // Deref: Box<dyn CredentialCacheCollection> ->
-        //        dyn CredentialCacheCollection ->
-        //        Vec<Box<dyn CredentialCache>>
-        (**self).iter()
-    }
-}
-
-impl<'a> IntoIterator for &'a mut BoxedCredentialCacheCollection {
-    type Item = &'a mut Box<dyn CredentialCache>;
-    type IntoIter = std::slice::IterMut<'a, Box<dyn CredentialCache>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        // Deref: Box<dyn CredentialCacheCollection> ->
-        //        dyn CredentialCacheCollection ->
-        //        Vec<Box<dyn CredentialCache>>
-        (**self).iter_mut()
-    }
 }
 
 #[cfg(test)]

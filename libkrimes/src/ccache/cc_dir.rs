@@ -4,7 +4,6 @@ use crate::ccache::{CredentialCacheCollection, ResolvedCredentialCache};
 use crate::error::KrbError;
 use std::fs::{DirBuilder, File, Permissions};
 use std::io::{Read, Write};
-use std::ops::{Deref, DerefMut};
 use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -60,21 +59,6 @@ fn store_primary_subsidiary_name(
 
 pub(super) struct DirCredentialCacheCollection {
     collection_path: PathBuf,
-    subsidiaries: Vec<Box<dyn CredentialCache>>,
-    // TODO Drop subsidiaries
-}
-
-impl Deref for DirCredentialCacheCollection {
-    type Target = Vec<Box<dyn CredentialCache>>;
-    fn deref(&self) -> &Self::Target {
-        &self.subsidiaries
-    }
-}
-
-impl DerefMut for DirCredentialCacheCollection {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.subsidiaries
-    }
 }
 
 impl CredentialCacheCollection for DirCredentialCacheCollection {
@@ -101,7 +85,6 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
                 let fcc = FileCredentialCacheContext {
                     path: self.collection_path.join(primary_name),
                 };
-                // TODO Append to self.subsidiaries?
                 Ok(Box::new(fcc))
             }
             Err(e) => {
@@ -122,6 +105,37 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
             self.collection_path.as_path(),
         )?;
         Ok(())
+    }
+
+    fn subsidiaries(&self) -> Result<Vec<Box<dyn CredentialCache>>, KrbError> {
+        let mut subsidiaries: Vec<Box<dyn CredentialCache>> = vec![];
+        for entry in WalkDir::new(&self.collection_path)
+            .into_iter()
+            .filter_map(|dir_ent| {
+                dir_ent
+                    .map_err(|err| {
+                        error!(?err, "Failed to read directory entry");
+                        KrbError::IoError
+                    })
+                    .and_then(|dir_ent| {
+                        dir_ent
+                            .metadata()
+                            .map_err(|err| {
+                                error!(?err, "Failed to read directory entry metadata");
+                                KrbError::IoError
+                            })
+                            .map(|dir_ent_meta| (dir_ent, dir_ent_meta))
+                    })
+                    .ok()
+            })
+            .filter(|a| a.1.is_file() && a.0.file_name() != "primary")
+        {
+            let fcc = FileCredentialCacheContext {
+                path: entry.0.into_path(),
+            };
+            subsidiaries.push(Box::new(fcc));
+        }
+        Ok(subsidiaries)
     }
 }
 
@@ -154,40 +168,8 @@ pub(super) fn resolve(ccache_name: &str) -> Result<ResolvedCredentialCache, KrbE
 
         create_ccache_dir(&collection_path)?;
 
-        let mut cccol = DirCredentialCacheCollection {
-            collection_path,
-            subsidiaries: vec![],
-        };
-
-        for entry in WalkDir::new(&cccol.collection_path)
-            .into_iter()
-            .filter_map(|dir_ent| {
-                dir_ent
-                    .map_err(|err| {
-                        error!(?err, "Failed to read directory entry");
-                        KrbError::IoError
-                    })
-                    .and_then(|dir_ent| {
-                        dir_ent
-                            .metadata()
-                            .map_err(|err| {
-                                error!(?err, "Failed to read directory entry metadata");
-                                KrbError::IoError
-                            })
-                            .map(|dir_ent_meta| (dir_ent, dir_ent_meta))
-                    })
-                    .ok()
-            })
-            .filter(|a| a.1.is_file() && a.0.file_name() != "primary")
-        {
-            let fcc = FileCredentialCacheContext {
-                path: entry.0.into_path(),
-            };
-            cccol.subsidiaries.push(Box::new(fcc));
-        }
-
-        let ccol = Box::new(cccol);
-        ResolvedCredentialCache::Collection(ccol)
+        let cccol = DirCredentialCacheCollection { collection_path };
+        ResolvedCredentialCache::Collection(Box::new(cccol))
     };
 
     Ok(resolved)
