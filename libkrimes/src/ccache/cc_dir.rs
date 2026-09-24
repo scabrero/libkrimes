@@ -141,7 +141,7 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
         Err(KrbError::CredentialCacheError)
     }
 
-    fn switch(&mut self, ccache: Box<dyn CredentialCache>) -> Result<(), KrbError> {
+    fn switch(&mut self, ccache: &Box<dyn CredentialCache>) -> Result<(), KrbError> {
         let primary_path = ccache.name()?;
         let primary_path = PathBuf::from(primary_path);
         let primary_name = primary_path
