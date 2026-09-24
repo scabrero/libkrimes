@@ -3,7 +3,7 @@ use crate::ccache::cc_file::FileCredentialCacheContext;
 use crate::ccache::{CredentialCacheCollection, ResolvedCredentialCache};
 use crate::error::KrbError;
 use rand::{distr::Alphanumeric, Rng};
-use std::fs::{DirBuilder, File, Permissions};
+use std::fs::{remove_dir_all, DirBuilder, File, Permissions};
 use std::io::{Read, Write};
 use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::fs::PermissionsExt;
@@ -184,6 +184,14 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
             subsidiaries.push(Box::new(fcc));
         }
         Ok(subsidiaries)
+    }
+
+    fn destroy(&mut self) -> Result<(), KrbError> {
+        remove_dir_all(&self.collection_path).map_err(|x| {
+            error!(?x, "Failed to destroy credential cache collection");
+            println!("{:?} - {:?}", self.collection_path, x);
+            KrbError::IoError
+        })
     }
 }
 
