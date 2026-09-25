@@ -52,7 +52,10 @@ fn store_primary_subsidiary_name(
         KrbError::IoError
     })?;
 
-    f.write_all(subsidiary_name.as_bytes()).map_err(|e| {
+    let mut bytes = subsidiary_name.as_bytes().to_vec();
+    bytes.extend("\n".as_bytes());
+
+    f.write_all(bytes.as_slice()).map_err(|e| {
         error!(?e, ?subsidiary_name, "Failed to write primary file");
         KrbError::IoError
     })
