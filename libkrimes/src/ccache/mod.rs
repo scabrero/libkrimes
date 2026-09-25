@@ -552,7 +552,6 @@ pub trait CredentialCacheCollection {
     fn primary(&self) -> Result<Box<dyn CredentialCache>, KrbError>;
     fn new_unique(&self) -> Result<Box<dyn CredentialCache>, KrbError>;
     fn switch(&mut self, ccache: &Box<dyn CredentialCache>) -> Result<(), KrbError>;
-    fn destroy(&mut self) -> Result<(), KrbError>;
     fn subsidiaries(&self) -> Result<Vec<Box<dyn CredentialCache>>, KrbError>;
 
     fn find(&self, name: &Name) -> Result<Box<dyn CredentialCache>, KrbError> {
@@ -562,6 +561,11 @@ pub trait CredentialCacheCollection {
             }
         }
         Err(KrbError::CredentialCacheNotFound)
+    }
+    fn destroy(&mut self) -> Result<(), KrbError> {
+        // Destroy the primary subsidiary. The primary key ramain stale.
+        let mut cc = self.primary()?;
+        cc.destroy()
     }
 
     fn try_iter(&self) -> Result<std::vec::IntoIter<Box<dyn CredentialCache>>, KrbError> {

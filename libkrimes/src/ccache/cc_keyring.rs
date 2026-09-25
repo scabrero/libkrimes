@@ -595,21 +595,6 @@ impl CredentialCacheCollection for KeyringCredentialCacheCollection {
         }
         Ok(subsidiaries)
     }
-
-    fn destroy(&mut self) -> Result<(), KrbError> {
-        for mut cc in self.subsidiaries()? {
-            cc.destroy()
-                .inspect_err(|x| error!("Failed to destroy subsidiary: {:?}", x))
-                .ok();
-        }
-
-        let mut anchor = get_anchor(&self.residual)?;
-        let collection = get_collection(&self.residual)?;
-        anchor
-            .unlink_keyring(&collection)
-            .inspect_err(|e| error!(?e, "Failed to unlink collection from anchor"))?;
-        Ok(())
-    }
 }
 
 pub(super) fn resolve(ccache_name: &str) -> Result<ResolvedCredentialCache, KrbError> {
