@@ -557,7 +557,7 @@ impl CredentialCacheCollection for KeyringCredentialCacheCollection {
         Ok(Box::new(cc))
     }
 
-    fn switch(&mut self, ccache: &Box<dyn CredentialCache>) -> Result<(), KrbError> {
+    fn switch(&mut self, ccache: &dyn CredentialCache) -> Result<(), KrbError> {
         let mut collection = get_collection(&self.residual)?;
         let new_primary_name = ccache
             .full_name()
@@ -757,7 +757,7 @@ mod tests {
             panic!("Collection expected")
         };
         let p2_cc = cccol.find(&p2)?;
-        cccol.switch(&p2_cc)?;
+        cccol.switch(&*p2_cc)?;
         let primary = get_primary_subsidiary_name(&mut col)?.expect("No primary key");
         assert!(primary != "c1");
 

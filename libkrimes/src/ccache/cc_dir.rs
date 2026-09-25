@@ -141,7 +141,7 @@ impl CredentialCacheCollection for DirCredentialCacheCollection {
         Err(KrbError::CredentialCacheError)
     }
 
-    fn switch(&mut self, ccache: &Box<dyn CredentialCache>) -> Result<(), KrbError> {
+    fn switch(&mut self, ccache: &dyn CredentialCache) -> Result<(), KrbError> {
         let primary_path = ccache.name()?;
         let primary_path = PathBuf::from(primary_path);
         let primary_name = primary_path
@@ -255,7 +255,7 @@ mod tests {
         // Residual without subsidiary -> switch primary -> new primary subsidiary
         let new = cccol.new_unique()?;
         assert!(new.name()?.split("/").last().unwrap().starts_with("krb"));
-        cccol.switch(&new)?;
+        cccol.switch(&*new)?;
         assert_eq!(cccol.name()?, new.name()?);
         assert_eq!(cccol.full_name()?, new.full_name()?);
         cccol.destroy().ok();
