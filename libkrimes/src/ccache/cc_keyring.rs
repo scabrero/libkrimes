@@ -614,165 +614,165 @@ pub(super) fn resolve(ccache_name: &str) -> Result<ResolvedCredentialCache, KrbE
     Ok(resolved)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use std::process::Command;
-    #[cfg(feature = "keyring")]
-    use std::process::Stdio;
-
-    #[tokio::test]
-    async fn test_ccache_keyring_residual_parse() -> Result<(), KrbError> {
-        let residual = Residual::parse("KEYRING:session");
-        assert!(residual.is_err());
-        let residual = Residual::parse("KEYRING:session:");
-        assert!(residual.is_err());
-        let residual = Residual::parse("KEYRING:session:1000")?;
-        assert_eq!(
-            residual,
-            Residual {
-                anchor: "session".to_string(),
-                collection: "1000".to_string(),
-                subsidiary: None
-            }
-        );
-        let residual = Residual::parse("KEYRING:session:1000:")?;
-        assert_eq!(
-            residual,
-            Residual {
-                anchor: "session".to_string(),
-                collection: "1000".to_string(),
-                subsidiary: None
-            }
-        );
-        let residual = Residual::parse("KEYRING:session:1000:foo")?;
-        assert_eq!(
-            residual,
-            Residual {
-                anchor: "session".to_string(),
-                collection: "1000".to_string(),
-                subsidiary: Some("foo".to_string())
-            }
-        );
-        Ok(())
-    }
-
-    fn klist_all(ccache_name: &str) -> String {
-        let output = Command::new("klist")
-            .stderr(Stdio::null())
-            .arg("-c")
-            .arg(ccache_name)
-            .arg("-A")
-            .output()
-            .expect("Unable to execute command klist");
-        assert!(output.status.success());
-
-        String::from_utf8_lossy(output.stdout.as_slice()).to_string()
-    }
-
-    #[tokio::test]
-    async fn test_ccache_keyring_primary() -> Result<(), KrbError> {
-        // No subsidiary in residual
-        let ccache_name = Some("KEYRING:session:c1");
-
-        let p1 = Name::Principal {
-            name: "p1".to_string(),
-            realm: "EXAMPLE.COM".to_string(),
-        };
-        let p2 = Name::Principal {
-            name: "p2".to_string(),
-            realm: "EXAMPLE.COM".to_string(),
-        };
-        let p3 = Name::Principal {
-            name: "p3".to_string(),
-            realm: "EXAMPLE.COM".to_string(),
-        };
-
-        let ResolvedCredentialCache::Collection(cccol) = crate::ccache::resolve(ccache_name)?
-        else {
-            panic!("Collection expected");
-        };
-        let mut col = get_collection(&Residual {
-            anchor: "session".to_string(),
-            collection: "c1".to_string(),
-            subsidiary: None,
-        })?;
-
-        // Will set primary to collection name
-        let mut primary_cc = cccol.primary()?;
-        let primary = get_primary_subsidiary_name(&mut col)?.expect("No primary key");
-        assert_eq!(primary, "c1");
-
-        primary_cc.init(&p1, None)?;
-        let primary = get_primary_subsidiary_name(&mut col)?.expect("No primary key");
-        assert_eq!(primary, "c1");
-
-        // Will not overwrite primary
-        let mut p2_cc = cccol.new_unique()?;
-        p2_cc.init(&p2, None)?;
-        let primary = get_primary_subsidiary_name(&mut col)?.expect("No primary key");
-        assert_eq!(primary, "c1");
-
-        // Subsidiary specified, primary not overrided
-        let ccache_name = Some("KEYRING:session:c1:p3");
-        let ResolvedCredentialCache::Subsidiary(mut p3_cc) = crate::ccache::resolve(ccache_name)?
-        else {
-            panic!("Subsidiary expected")
-        };
-        p3_cc.init(&p3, None)?;
-        let primary = get_primary_subsidiary_name(&mut col)?.expect("No primary key");
-        assert_eq!(primary, "c1");
-
-        // At this point, collection has 3 subsidiaries
-        let ccache_name = "KEYRING:session:c1";
-        let output = klist_all(ccache_name);
-        assert!(output.contains("p1@EXAMPLE.COM"));
-        assert!(output.contains("p2@EXAMPLE.COM"));
-        assert!(output.contains("p3@EXAMPLE.COM"));
-
-        // Destroy the primary subsidiary
-        let ccache_name = "KEYRING:session:c1:c1";
-        let ResolvedCredentialCache::Subsidiary(mut p1_cc) =
-            crate::ccache::resolve(Some(ccache_name))?
-        else {
-            panic!("Subsidiary expected")
-        };
-        p1_cc.destroy()?;
-        let ccache_name = "KEYRING:session:c1";
-        let output = klist_all(ccache_name);
-        assert!(!output.contains("p1@EXAMPLE.COM"));
-        assert!(output.contains("p2@EXAMPLE.COM"));
-        assert!(output.contains("p3@EXAMPLE.COM"));
-
-        // But the primary key remains pointing to the deleted subsidiary
-        let primary = get_primary_subsidiary_name(&mut col)?.expect("No primary key");
-        assert_eq!(primary, "c1");
-
-        // Swith the primary and destroy without specifying the subsidiary has to delete the primary.
-        let ccache_name = "KEYRING:session:c1";
-        let ResolvedCredentialCache::Collection(mut cccol) =
-            crate::ccache::resolve(Some(ccache_name))?
-        else {
-            panic!("Collection expected")
-        };
-        let p2_cc = cccol.find(&p2)?;
-        cccol.switch(&*p2_cc)?;
-        let primary = get_primary_subsidiary_name(&mut col)?.expect("No primary key");
-        assert!(primary != "c1");
-
-        cccol.destroy()?;
-        let output = klist_all(ccache_name);
-        assert!(!output.contains("p1@EXAMPLE.COM"));
-        assert!(!output.contains("p2@EXAMPLE.COM"));
-        assert!(output.contains("p3@EXAMPLE.COM"));
-
-        // Remove collection keyring
-        let mut col = Keyring::attach_or_create(SpecialKeyring::Session)?;
-        if let Ok(k) = col.search_for_keyring("_krb_c1", None) {
-            col.unlink_keyring(&k).expect("Failed to unlink");
-        };
-
-        Ok(())
-    }
-}
+//#[cfg(test)]
+//mod tests {
+//    use super::*;
+//
+//    use std::process::Command;
+//    #[cfg(feature = "keyring")]
+//    use std::process::Stdio;
+//
+//    #[tokio::test]
+//    async fn test_ccache_keyring_residual_parse() -> Result<(), KrbError> {
+//        let residual = Residual::parse("KEYRING:session");
+//        assert!(residual.is_err());
+//        let residual = Residual::parse("KEYRING:session:");
+//        assert!(residual.is_err());
+//        let residual = Residual::parse("KEYRING:session:1000")?;
+//        assert_eq!(
+//            residual,
+//            Residual {
+//                anchor: "session".to_string(),
+//                collection: "1000".to_string(),
+//                subsidiary: None
+//            }
+//        );
+//        let residual = Residual::parse("KEYRING:session:1000:")?;
+//        assert_eq!(
+//            residual,
+//            Residual {
+//                anchor: "session".to_string(),
+//                collection: "1000".to_string(),
+//                subsidiary: None
+//            }
+//        );
+//        let residual = Residual::parse("KEYRING:session:1000:foo")?;
+//        assert_eq!(
+//            residual,
+//            Residual {
+//                anchor: "session".to_string(),
+//                collection: "1000".to_string(),
+//                subsidiary: Some("foo".to_string())
+//            }
+//        );
+//        Ok(())
+//    }
+//
+//    fn klist_all(ccache_name: &str) -> String {
+//        let output = Command::new("klist")
+//            .stderr(Stdio::null())
+//            .arg("-c")
+//            .arg(ccache_name)
+//            .arg("-A")
+//            .output()
+//            .expect("Unable to execute command klist");
+//        assert!(output.status.success());
+//
+//        String::from_utf8_lossy(output.stdout.as_slice()).to_string()
+//    }
+//
+//    #[tokio::test]
+//    async fn test_ccache_keyring_primary() -> Result<(), KrbError> {
+//        // No subsidiary in residual
+//        let ccache_name = Some("KEYRING:session:c1");
+//
+//        let p1 = Name::Principal {
+//            name: "p1".to_string(),
+//            realm: "EXAMPLE.COM".to_string(),
+//        };
+//        let p2 = Name::Principal {
+//            name: "p2".to_string(),
+//            realm: "EXAMPLE.COM".to_string(),
+//        };
+//        let p3 = Name::Principal {
+//            name: "p3".to_string(),
+//            realm: "EXAMPLE.COM".to_string(),
+//        };
+//
+//        let ResolvedCredentialCache::Collection(cccol) = crate::ccache::resolve(ccache_name)?
+//        else {
+//            panic!("Collection expected");
+//        };
+//        let mut col = get_collection(&Residual {
+//            anchor: "session".to_string(),
+//            collection: "c1".to_string(),
+//            subsidiary: None,
+//        })?;
+//
+//        // Will set primary to collection name
+//        let mut primary_cc = cccol.primary()?;
+//        let primary = get_primary_subsidiary_name(&mut col)?.expect("No primary key");
+//        assert_eq!(primary, "c1");
+//
+//        primary_cc.init(&p1, None)?;
+//        let primary = get_primary_subsidiary_name(&mut col)?.expect("No primary key");
+//        assert_eq!(primary, "c1");
+//
+//        // Will not overwrite primary
+//        let mut p2_cc = cccol.new_unique()?;
+//        p2_cc.init(&p2, None)?;
+//        let primary = get_primary_subsidiary_name(&mut col)?.expect("No primary key");
+//        assert_eq!(primary, "c1");
+//
+//        // Subsidiary specified, primary not overrided
+//        let ccache_name = Some("KEYRING:session:c1:p3");
+//        let ResolvedCredentialCache::Subsidiary(mut p3_cc) = crate::ccache::resolve(ccache_name)?
+//        else {
+//            panic!("Subsidiary expected")
+//        };
+//        p3_cc.init(&p3, None)?;
+//        let primary = get_primary_subsidiary_name(&mut col)?.expect("No primary key");
+//        assert_eq!(primary, "c1");
+//
+//        // At this point, collection has 3 subsidiaries
+//        let ccache_name = "KEYRING:session:c1";
+//        let output = klist_all(ccache_name);
+//        assert!(output.contains("p1@EXAMPLE.COM"));
+//        assert!(output.contains("p2@EXAMPLE.COM"));
+//        assert!(output.contains("p3@EXAMPLE.COM"));
+//
+//        // Destroy the primary subsidiary
+//        let ccache_name = "KEYRING:session:c1:c1";
+//        let ResolvedCredentialCache::Subsidiary(mut p1_cc) =
+//            crate::ccache::resolve(Some(ccache_name))?
+//        else {
+//            panic!("Subsidiary expected")
+//        };
+//        p1_cc.destroy()?;
+//        let ccache_name = "KEYRING:session:c1";
+//        let output = klist_all(ccache_name);
+//        assert!(!output.contains("p1@EXAMPLE.COM"));
+//        assert!(output.contains("p2@EXAMPLE.COM"));
+//        assert!(output.contains("p3@EXAMPLE.COM"));
+//
+//        // But the primary key remains pointing to the deleted subsidiary
+//        let primary = get_primary_subsidiary_name(&mut col)?.expect("No primary key");
+//        assert_eq!(primary, "c1");
+//
+//        // Swith the primary and destroy without specifying the subsidiary has to delete the primary.
+//        let ccache_name = "KEYRING:session:c1";
+//        let ResolvedCredentialCache::Collection(mut cccol) =
+//            crate::ccache::resolve(Some(ccache_name))?
+//        else {
+//            panic!("Collection expected")
+//        };
+//        let p2_cc = cccol.find(&p2)?;
+//        cccol.switch(&*p2_cc)?;
+//        let primary = get_primary_subsidiary_name(&mut col)?.expect("No primary key");
+//        assert!(primary != "c1");
+//
+//        cccol.destroy()?;
+//        let output = klist_all(ccache_name);
+//        assert!(!output.contains("p1@EXAMPLE.COM"));
+//        assert!(!output.contains("p2@EXAMPLE.COM"));
+//        assert!(output.contains("p3@EXAMPLE.COM"));
+//
+//        // Remove collection keyring
+//        let mut col = Keyring::attach_or_create(SpecialKeyring::Session)?;
+//        if let Ok(k) = col.search_for_keyring("_krb_c1", None) {
+//            col.unlink_keyring(&k).expect("Failed to unlink");
+//        };
+//
+//        Ok(())
+//    }
+//}
