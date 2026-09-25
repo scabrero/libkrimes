@@ -634,6 +634,22 @@ mod tests {
         String::from_utf8_lossy(output.stdout.as_slice()).to_string()
     }
 
+    pub(super) fn klist_all(ccache_name: &str) -> String {
+        let output = Command::new("klist")
+            .arg("-c")
+            .arg(ccache_name)
+            .arg("-A")
+            .output()
+            .expect("Unable to execute command klist");
+        assert!(
+            output.status.success(),
+            "klist failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        String::from_utf8_lossy(output.stdout.as_slice()).to_string()
+    }
+
     #[tokio::test]
     async fn test_resolve_file_is_subsidiary() -> Result<(), KrbError> {
         let ResolvedCredentialCache::Subsidiary(cc) =
@@ -682,7 +698,7 @@ mod tests {
     pub(super) async fn store_and_verify_roundtrip(ccache_name: &str) -> Result<(), KrbError> {
         let creds = crate::proto::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
 
-        let mut ccache = match crate::ccache::resolve(Some(&ccache_name))? {
+        let mut ccache = match crate::ccache::resolve(Some(ccache_name))? {
             ResolvedCredentialCache::Subsidiary(ccache) => ccache,
             ResolvedCredentialCache::Collection(cccol) => cccol.primary()?,
         };
