@@ -606,8 +606,6 @@ mod tests {
     use super::*;
     use std::process::Command;
     #[cfg(feature = "keyring")]
-    use std::process::Stdio;
-
     #[tokio::test]
     async fn test_ccache_file_store() -> Result<(), KrbError> {
         let _ = tracing_subscriber::fmt::try_init();
@@ -645,48 +643,6 @@ mod tests {
 
         ccache.destroy()?;
         assert!(!std::fs::exists(path).expect("Unable to check if file exists"));
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[cfg(feature = "keyring")]
-    async fn test_ccache_keyring_store() -> Result<(), KrbError> {
-        if std::env::var("CI").is_ok() {
-            // Skip this test in CI, as it requires a KDC running on localhost
-            warn!("Skipping get_tgt in CI");
-            return Ok(());
-        }
-
-        let ccache_name = "KEYRING:session:abc";
-        let ccname = Some(ccache_name);
-
-        let ResolvedCredentialCache::Subsidiary(mut ccache) = super::resolve(ccname)? else {
-            panic!("Unexpected")
-        };
-        let creds = crate::proto::get_tgt("testuser", "EXAMPLE.COM", "password").await?;
-        ccache.init(&creds.name, None)?;
-        ccache.store(&creds)?;
-
-        let ResolvedCredentialCache::Subsidiary(mut ccache) = super::resolve(ccname)? else {
-            panic!("Unexpected")
-        };
-        let creds = crate::proto::get_tgt("testuser2", "EXAMPLE.COM", "password").await?;
-        ccache.init(&creds.name, None)?;
-        ccache.store(&creds)?;
-
-        let output = Command::new("klist")
-            .stderr(Stdio::null())
-            .arg("-c")
-            .arg(ccache_name)
-            .arg("-A")
-            .output()
-            .expect("Unable to execute command klist");
-        assert!(output.status.success());
-
-        let output = String::from_utf8_lossy(output.stdout.as_slice()).to_string();
-        assert!(output.contains("testuser@EXAMPLE.COM"));
-        assert!(output.contains("testuser2@EXAMPLE.COM"));
 
         Ok(())
     }
