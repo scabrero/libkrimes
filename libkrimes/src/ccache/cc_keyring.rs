@@ -85,6 +85,7 @@ use errno::Errno;
 use keyutils::keytypes::user::User;
 use keyutils::{Keyring, SpecialKeyring};
 use keyutils_raw::{keyctl_get_keyring_id, keyctl_get_persistent};
+use std::ffi::OsString;
 use std::fmt::Display;
 use std::time::Duration;
 use tracing::{debug, error, trace};
@@ -398,8 +399,8 @@ impl CredentialCache for KeyringCredentialCacheContext {
         "KEYRING"
     }
 
-    fn name(&self) -> Result<String, KrbError> {
-        Ok(self.residual.to_string())
+    fn name(&self) -> Result<OsString, KrbError> {
+        Ok(OsString::from(self.residual.to_string()))
     }
 
     fn init(&mut self, name: &Name, clock_skew: Option<Duration>) -> Result<(), KrbError> {
@@ -537,7 +538,7 @@ impl CredentialCacheCollection for KeyringCredentialCacheCollection {
         "KEYRING"
     }
 
-    fn name(&self) -> Result<String, KrbError> {
+    fn name(&self) -> Result<OsString, KrbError> {
         self.primary()?.name()
     }
 
@@ -582,6 +583,7 @@ impl CredentialCacheCollection for KeyringCredentialCacheCollection {
     fn switch(&mut self, ccache: &dyn CredentialCache) -> Result<(), KrbError> {
         let new_primary_name = ccache
             .full_name()
+            .map(|x| x.to_string_lossy().to_string())
             .and_then(|x| Residual::parse(&x))
             .map(|x| x.subsidiary)?
             .ok_or(KrbError::CredentialCacheNotFound)?;

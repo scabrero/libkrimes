@@ -7,6 +7,7 @@ use binrw::io::TakeSeekExt;
 use binrw::BinReaderExt;
 use binrw::BinWrite;
 use binrw::{binread, binwrite};
+use std::ffi::OsString;
 use std::fmt;
 use std::fs;
 use std::fs::File;
@@ -143,18 +144,20 @@ impl CredentialCache for FileCredentialCacheContext {
         }
     }
 
-    fn name(&self) -> Result<String, KrbError> {
+    fn name(&self) -> Result<OsString, KrbError> {
         let name = match &self.cccol_path {
             Some(cccol) => {
                 // This is a subsidiary cache in a DIR collection
                 let file = self
                     .path
                     .file_name()
-                    .map(|x| x.to_string_lossy().to_string())
                     .ok_or(KrbError::CredentialCacheNotFound)?;
-                format!(":{}/{}", cccol.to_string_lossy(), file)
+                let full = cccol.join(file);
+                let mut prefix = OsString::from(":");
+                prefix.push(full.as_os_str());
+                prefix
             }
-            None => self.path.to_string_lossy().to_string(),
+            None => self.path.as_os_str().to_owned(),
         };
         Ok(name)
     }

@@ -19,6 +19,7 @@ use chrono::prelude::DateTime;
 use chrono::Utc;
 use crypto_glue::der::{asn1::OctetString, Encode};
 use std::env;
+use std::ffi::OsString;
 use std::fmt;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -530,9 +531,11 @@ fn parse_ccache_name(ccache: Option<&str>) -> Result<String, KrbError> {
 
 pub trait CredentialCache {
     fn cc_type(&self) -> &'static str;
-    fn name(&self) -> Result<String, KrbError>;
-    fn full_name(&self) -> Result<String, KrbError> {
-        Ok(format!("{}:{}", self.cc_type(), self.name()?))
+    fn name(&self) -> Result<OsString, KrbError>;
+    fn full_name(&self) -> Result<OsString, KrbError> {
+        let mut full_name: OsString = OsString::from(format!("{}:", self.cc_type()));
+        full_name.push(self.name()?);
+        Ok(full_name)
     }
     fn init(&mut self, name: &Name, clock_skew: Option<Duration>) -> Result<(), KrbError>;
     fn destroy(&mut self) -> Result<(), KrbError>;
@@ -543,9 +546,11 @@ pub trait CredentialCache {
 
 pub trait CredentialCacheCollection {
     fn cc_type(&self) -> &'static str;
-    fn name(&self) -> Result<String, KrbError>;
-    fn full_name(&self) -> Result<String, KrbError> {
-        Ok(format!("{}:{}", self.cc_type(), self.name()?))
+    fn name(&self) -> Result<OsString, KrbError>;
+    fn full_name(&self) -> Result<OsString, KrbError> {
+        let mut full_name: OsString = OsString::from(format!("{}:", self.cc_type()));
+        full_name.push(self.name()?);
+        Ok(full_name)
     }
 
     fn primary(&self) -> Result<Box<dyn CredentialCache>, KrbError>;

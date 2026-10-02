@@ -7,7 +7,9 @@ pub(crate) fn dump(opt: CcacheDumpOpt) {
         ResolvedCredentialCache::Collection(cccol) => {
             if let Ok(primary) = cccol.primary() {
                 match primary.name() {
-                    Ok(name) => print!("Primary credential cache is {name}\n\n"),
+                    Ok(name) => {
+                        print!("Primary credential cache is {}\n\n", name.to_string_lossy())
+                    }
                     Err(e) => print!("Failed to read primary subsidiary name: {:?}\n\n", e),
                 }
             }
